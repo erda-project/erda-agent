@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	_ "net/http/pprof"
 	"syscall"
 	"time"
@@ -164,9 +165,9 @@ func (e *Ebpf) FanInMetric(m *ebpf.Map) {
 }
 
 func GetEBPFProg() []byte {
-	b, err := ioutil.ReadFile("main.bpf.o")
+	b, err := ioutil.ReadFile("target/traffic.bpf.o")
 	if err != nil {
-		fmt.Println("Could not read BPF object file", err.Error())
+		log.Println("Could not read BPF object file", err.Error())
 	}
 	return b
 }
