@@ -5,12 +5,13 @@
 
 ### 编译
 ``` go
-//会同时生成go的二级制文件以及编译好的.o文件
+//会同时生成go的二进制制文件以及编译好的.o文件
 make
 ```
 
 ### 运行
-
 ``` go
+//最终采用daemonset的方式运行,使用nodename过滤本节点的endpint来创建ebpf程序。
+export nodename="cn-hangzhou.172.16.174.45"
 ./main
 ```
