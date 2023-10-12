@@ -2,8 +2,9 @@ package red
 
 import (
 	"fmt"
-	"main/metric"
 	"time"
+
+	"github.com/erda-project/ebpf-agent/metric"
 )
 
 type RED struct {

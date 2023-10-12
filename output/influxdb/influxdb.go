@@ -3,9 +3,10 @@ package influxdb
 import (
 	"context"
 	"log"
-	"main/metric"
 	"sync"
 	"time"
+
+	"github.com/erda-project/ebpf-agent/metric"
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	influxdb2api "github.com/influxdata/influxdb-client-go/v2/api"

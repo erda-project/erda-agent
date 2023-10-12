@@ -6,10 +6,10 @@ import (
 	_ "net/http/pprof"
 	"os"
 
-	"main/metric"
-	"main/output/influxdb"
-	plugins "main/plugins"
-	_ "main/plugins/all"
+	"github.com/erda-project/ebpf-agent/metric"
+	"github.com/erda-project/ebpf-agent/output/influxdb"
+	plugins "github.com/erda-project/ebpf-agent/plugins"
+	_ "github.com/erda-project/ebpf-agent/plugins/all"
 
 	"github.com/cilium/ebpf/rlimit"
 )
