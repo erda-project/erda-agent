@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: oom-pod
+spec:
+  restartPolicy: OnFailure
+  containers:
+    - name: go-demo
+      image: registry.ap-southeast-1.aliyuncs.com/joeycheng/library:go-web-oom-2
+      ports:
+        - containerPort: 8080
+      resources:
+        requests:
+          cpu: 0.1
+          memory: 20Mi
+        limits:
+          cpu: 0.1
+          memory: 20Mi

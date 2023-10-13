@@ -5,11 +5,11 @@ import (
 	"strconv"
 	"time"
 
-	"main/metric"
-	"main/plugins"
-	"main/plugins/traffic/controller"
-	"main/plugins/traffic/ebpf"
-	"main/plugins/traffic/red"
+	"github.com/erda-project/ebpf-agent/metric"
+	"github.com/erda-project/ebpf-agent/plugins"
+	"github.com/erda-project/ebpf-agent/plugins/traffic/controller"
+	"github.com/erda-project/ebpf-agent/plugins/traffic/ebpf"
+	"github.com/erda-project/ebpf-agent/plugins/traffic/red"
 )
 
 type Traffic struct{}

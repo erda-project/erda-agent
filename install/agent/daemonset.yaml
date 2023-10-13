@@ -43,7 +43,7 @@ spec:
         envFrom:
         - configMapRef:
             name: agent-config
-        image: registry.erda.cloud/retag/kubebpf-agent:0.1
+        image: registry.erda.cloud/erda/ebpf-agent:1.0-20231013155503
         imagePullPolicy: Always
         command:
         - /main
@@ -77,6 +77,13 @@ spec:
           requests:
             cpu: 10m
             memory: 10Mi
+        volumeMounts:
+          - name: rootfs
+            mountPath: /rootfs
+            readOnly: true
+          - name: var-run
+            mountPath: /var/run
+            readOnly: true
         securityContext:
           privileged: true
         terminationMessagePath: /dev/termination-log
@@ -87,6 +94,13 @@ spec:
       schedulerName: default-scheduler
       securityContext: {}
       terminationGracePeriodSeconds: 30
+      volumes:
+        - name: rootfs
+          hostPath:
+            path: /
+        - name: var-run
+          hostPath:
+            path: /var/run
   updateStrategy:
     rollingUpdate:
       maxUnavailable: 5

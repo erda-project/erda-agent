@@ -3,13 +3,14 @@ package ebpf
 import (
 	"encoding/binary"
 	"fmt"
-	"main/metric"
 	"net"
 	"strconv"
 	"strings"
 	"syscall"
 	"time"
 	"unsafe"
+
+	"github.com/erda-project/ebpf-agent/metric"
 )
 
 type MapPackage struct {

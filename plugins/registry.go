@@ -1,6 +1,6 @@
 package plugins
 
-import "main/metric"
+import "github.com/erda-project/ebpf-agent/metric"
 
 type Plugin interface {
 	Gather(chan metric.Metric)

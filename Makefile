@@ -3,6 +3,7 @@ ARCH := $(subst x86_64,amd64,$(ARCH))
 GOARCH := $(ARCH)
 CGO_EXTLDFLAGS_STATIC = '-w -extldflags "-static"'
 PROGRAM = main
+IMAGE_TAG = $(shell date '+%Y%m%d%H%M%S')
 
 build:
 	sh tools/ebpf/build/build.sh
@@ -17,7 +18,7 @@ build:
 
 # docker run -it  --network=host --privileged 562363fe10a4 bash
 image: build
-	docker build -f tools/agent/Dockerfile .
+	docker build -t "registry.erda.cloud/erda/ebpf-agent:1.0-$(IMAGE_TAG)" -f tools/agent/Dockerfile .
 run:
 	sudo ./main
 cat:
