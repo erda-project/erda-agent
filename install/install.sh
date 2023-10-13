@@ -1,10 +1,10 @@
 #!/bin/bash
 
-export NAMESPACE="k8s-ebpf"
-export INFLUX_ADDR=""
-export INFLUX_ORG=""
-export INFLUX_BUCKET=""
-export INFLUX_TOKEN=""
+export NAMESPACE="kubebpf"
+export INFLUX_ADDR="http://influxdb.default.svc.cluster.local:8086"
+export INFLUX_ORG="erda"
+export INFLUX_BUCKET="ebpf"
+export INFLUX_TOKEN=" kWwVy7IfF05yWPdMIlP4k6VPfPV8Uy0rdr583W-0FZ0XYZ93isCyEXc4cKD9xUWVa9bNO2OLp6EakddB-lpbfw=="
 
 # install ebpf agent
 function __install_agent {
