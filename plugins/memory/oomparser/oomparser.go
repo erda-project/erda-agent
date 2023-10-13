@@ -15,6 +15,7 @@ var (
 	firstLineRegexp       = regexp.MustCompile(`invoked oom-killer:`)
 	containerRegexp       = regexp.MustCompile(`oom-kill:constraint=(.*),nodemask=(.*),cpuset=(.*),mems_allowed=(.*),oom_memcg=(.*),task_memcg=(.*),task=(.*),pid=(.*),uid=(.*)`)
 	lastLineRegexp        = regexp.MustCompile(`Killed process ([0-9]+) \((.+)\)`)
+	legacyLastLineRegexp  = regexp.MustCompile(`oom_reaper: reaped process ([0-9]+) \((.+)\)`)
 )
 
 type OomParser struct {
@@ -59,7 +60,7 @@ func (p *OomParser) StreamOoms(outStream chan<- *OomInstance) {
 				TimeOfDeath:         msg.Timestamp,
 			}
 			for kmsg := range kmsgEntries {
-				finished, err := getContainerName(msg.Message, oomCurrentInstance)
+				finished, err := getContainerName(kmsg.Message, oomCurrentInstance)
 				if err != nil {
 					klog.Errorf("%v", err)
 				}
@@ -69,6 +70,7 @@ func (p *OomParser) StreamOoms(outStream chan<- *OomInstance) {
 						klog.Errorf("%v", err)
 					}
 				}
+				klog.Infof("check for finished kmsg, msg: %s, finished: %v", kmsg.Message, finished)
 				if finished {
 					oomCurrentInstance.TimeOfDeath = kmsg.Timestamp
 					break
@@ -101,6 +103,22 @@ func getContainerName(line string, currentOomInstance *OomInstance) (bool, error
 // gets the pid, name, and date from a line and adds it to oomInstance
 func getProcessNamePid(line string, currentOomInstance *OomInstance) (bool, error) {
 	reList := lastLineRegexp.FindStringSubmatch(line)
+
+	if reList == nil {
+		return getLegacyProcessNamePid(line, currentOomInstance)
+	}
+
+	pid, err := strconv.Atoi(reList[1])
+	if err != nil {
+		return false, err
+	}
+	currentOomInstance.Pid = pid
+	currentOomInstance.ProcessName = reList[2]
+	return true, nil
+}
+
+func getLegacyProcessNamePid(line string, currentOomInstance *OomInstance) (bool, error) {
+	reList := legacyLastLineRegexp.FindStringSubmatch(line)
 
 	if reList == nil {
 		return false, nil

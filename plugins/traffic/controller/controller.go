@@ -4,15 +4,14 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"flag"
 	"log"
-	"main/plugins/traffic/ebpf"
 	_ "net/http/pprof"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/erda-project/ebpf-agent/pkg/k8sclient"
+	"github.com/erda-project/ebpf-agent/plugins/traffic/ebpf"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/runtime"
@@ -21,9 +20,7 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
-	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/remotecommand"
-	"k8s.io/klog"
 )
 
 type Controller struct {
@@ -36,13 +33,7 @@ type Controller struct {
 }
 
 func NewController(ch chan ebpf.Metric) Controller {
-	var config *rest.Config
-	incluster := os.Getenv("IN_CLUSTER")
-	if incluster == "true" {
-		config = InClusterAuth()
-	} else {
-		config = OutOfClusterAuth()
-	}
+	config := k8sclient.GetRestConfig()
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		log.Panic(err)
@@ -223,41 +214,4 @@ func getPorts(e []corev1.EndpointPort) []int32 {
 		ports = append(ports, v.Port)
 	}
 	return ports
-}
-
-func InClusterAuth() (config *rest.Config) {
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		klog.Infoln(err.Error())
-		os.Exit(3)
-	}
-	return
-}
-
-func OutOfClusterAuth() (config *rest.Config) {
-
-	var err error
-	var kubeconfig *string
-	if home := homeDir(); home != "" {
-		kubeconfig = flag.String("kubeconfig",
-			filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
-	} else {
-		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
-	}
-	flag.Parse()
-
-	// use the current context in kubeconfig
-	config, err = clientcmd.BuildConfigFromFlags("", *kubeconfig)
-	if err != nil {
-		klog.Infoln(err.Error())
-		os.Exit(3)
-	}
-	return
-}
-
-func homeDir() string {
-	if h := os.Getenv("HOME"); h != "" {
-		return h
-	}
-	return os.Getenv("USERPROFILE") // windows
 }
