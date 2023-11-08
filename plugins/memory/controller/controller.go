@@ -4,15 +4,14 @@ import (
 	"log"
 	"strings"
 
+	"github.com/erda-project/ebpf-agent/metric"
+	"github.com/erda-project/ebpf-agent/pkg/criruntime"
+	"github.com/erda-project/ebpf-agent/pkg/k8sclient"
+	"github.com/erda-project/ebpf-agent/plugins/memory/oomprocesser"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	runtimeapi "k8s.io/cri-api/pkg/apis/runtime/v1"
 	"k8s.io/klog"
-
-	"github.com/erda-project/ebpf-agent/metric"
-	"github.com/erda-project/ebpf-agent/pkg/criruntime"
-	"github.com/erda-project/ebpf-agent/pkg/k8sclient"
-	"github.com/erda-project/ebpf-agent/plugins/memory/oomparser"
 )
 
 var (
@@ -50,30 +49,35 @@ func (c *Controller) Start(ch chan metric.Metric) {
 }
 
 func (c *Controller) watchForOoms(ch chan metric.Metric) error {
-	outStream := make(chan *oomparser.OomInstance, 10)
-	oomParser, err := oomparser.New()
-	if err != nil {
-		return err
-	}
-	go oomParser.StreamOoms(outStream)
+	//outStream := make(chan *oomprocesser.OomInstance, 10)
+	//oomParser, err := oomprocesser.New()
+	//if err != nil {
+	//	return err
+	//}
+	//go oomParser.StreamOoms(outStream)
+	oomEventChan := make(chan *oomprocesser.OOMEvent, 10)
+	go oomprocesser.WatchOOM(oomEventChan)
 
 	go func() {
-		for oomInstance := range outStream {
-			klog.Infof("oomInstance: %+v", oomInstance)
-			containerID := getContainerID(oomInstance.ContainerName)
-
-			containerRuntime := c.runtimeFactory.GetRuntimeService()
-			contStats, err := containerRuntime.ContainerStats(containerID)
-			if err != nil {
-				klog.Errorf("failed to get container stats: containerID: %s, err: %v", containerID, err)
-				continue
-			}
-			if !checkIsKubernetesPod(contStats.Attributes.GetLabels()) {
-				klog.Warningf("container %s is not a kubernetes pod", containerID)
-				continue
-			}
-			ch <- convertContainerStatsToMetric(contStats)
+		for event := range oomEventChan {
+			klog.Infof("oom event: %+v", event)
 		}
+		//for oomInstance := range outStream {
+		//	//klog.Infof("oomInstance: %+v", oomInstance)
+		//	containerID := getContainerID(oomInstance.ContainerName)
+		//
+		//	containerRuntime := c.runtimeFactory.GetRuntimeService()
+		//	contStats, err := containerRuntime.ContainerStats(containerID)
+		//	if err != nil {
+		//		//klog.Errorf("failed to get container stats: containerID: %s, err: %v", containerID, err)
+		//		continue
+		//	}
+		//	if !checkIsKubernetesPod(contStats.Attributes.GetLabels()) {
+		//		//klog.Warningf("container %s is not a kubernetes pod", containerID)
+		//		continue
+		//	}
+		//	ch <- convertContainerStatsToMetric(contStats)
+		//}
 	}()
 	return nil
 }

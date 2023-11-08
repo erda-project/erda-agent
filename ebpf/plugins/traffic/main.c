@@ -1,15 +1,14 @@
-#include <linux/bpf.h>
-#include "../../include/bpf_helpers.h"
-// #include <bpf/bpf_helpers.h>
+#include <linux/kconfig.h>
+#include <uapi/linux/bpf.h>
+#include "../../include/bpf_traffic_helpers.h"
 #include "../../include/bpf_endian.h"
-#include "../../include/types.h"
-#include <linux/if_ether.h>
-#include <linux/if_packet.h>
-#include <linux/ip.h>
-#include <linux/in.h>
-#include <linux/string.h>
-#include <linux/tcp.h>
-#include <linux/types.h>
+#include <uapi/linux/if_ether.h>
+#include <uapi/linux/if_packet.h>
+#include <uapi/linux/ip.h>
+#include <uapi/linux/in.h>
+#include <uapi/linux/string.h>
+#include <uapi/linux/tcp.h>
+#include <uapi/linux/types.h>
 
 
 enum package_type {

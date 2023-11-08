@@ -1,4 +1,4 @@
-package oomparser
+package oomprocesser
 
 import (
 	"path"
@@ -70,7 +70,6 @@ func (p *OomParser) StreamOoms(outStream chan<- *OomInstance) {
 						klog.Errorf("%v", err)
 					}
 				}
-				klog.Infof("check for finished kmsg, msg: %s, finished: %v", kmsg.Message, finished)
 				if finished {
 					oomCurrentInstance.TimeOfDeath = kmsg.Timestamp
 					break
@@ -105,7 +104,7 @@ func getProcessNamePid(line string, currentOomInstance *OomInstance) (bool, erro
 	reList := lastLineRegexp.FindStringSubmatch(line)
 
 	if reList == nil {
-		return getLegacyProcessNamePid(line, currentOomInstance)
+		return false, nil
 	}
 
 	pid, err := strconv.Atoi(reList[1])
