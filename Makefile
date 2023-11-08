@@ -8,7 +8,7 @@ IMAGE_TAG = $(shell date '+%Y%m%d%H%M%S')
 build:
 	sh tools/ebpf/build/build.sh
 	CC=$(CLANG) \
-		CGO_ENABLED=1 \
+		CGO_ENABLED=0 \
 		CGO_CFLAGS=$(CGO_CFLAGS_STATIC) \
 		CGO_LDFLAGS=$(CGO_LDFLAGS_STATIC) \
                 GOARCH=$(GOARCH) \

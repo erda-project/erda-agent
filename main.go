@@ -4,11 +4,9 @@ import (
 	"log"
 	"net/http"
 	_ "net/http/pprof"
-	"os"
 
 	"github.com/erda-project/ebpf-agent/metric"
-	"github.com/erda-project/ebpf-agent/output/influxdb"
-	plugins "github.com/erda-project/ebpf-agent/plugins"
+	"github.com/erda-project/ebpf-agent/plugins"
 	_ "github.com/erda-project/ebpf-agent/plugins/all"
 
 	"github.com/cilium/ebpf/rlimit"
@@ -22,11 +20,11 @@ func main() {
 	if err := rlimit.RemoveMemlock(); err != nil {
 		log.Fatal(err)
 	}
-	influxAddr := os.Getenv("INFLUX_ADDR")
-	influxOrg := os.Getenv("INFLUX_ORG")
-	influxBucket := os.Getenv("INFLUX_BUCKET")
-	influxToken := os.Getenv("INFLUX_TOKEN")
-	influxdb := influxdb.NewInfluxdb(influxAddr, influxOrg, influxBucket, influxToken).Run()
+	//influxAddr := os.Getenv("INFLUX_ADDR")
+	//influxOrg := os.Getenv("INFLUX_ORG")
+	//influxBucket := os.Getenv("INFLUX_BUCKET")
+	//influxToken := os.Getenv("INFLUX_TOKEN")
+	//influxdb := influxdb.NewInfluxdb(influxAddr, influxOrg, influxBucket, influxToken).Run()
 
 	//初始化metric管道
 	ch := make(chan metric.Metric, 1000)
@@ -36,11 +34,12 @@ func main() {
 		log.Printf("start run plugin [%s]\n", k)
 		go v.Gather(ch)
 	}
-	for m := range ch {
-		//处理metric, print / influxdb / prometheus / erda   等
-		// log.Printf("[%d] metric is wating to write\n", len(ch))
-		// log.Println(m.String())
-		influxdb.Write(m)
-	}
-
+	go func() {
+		for m := range ch {
+			//处理metric, print / influxdb / prometheus / erda   等
+			log.Printf("[%d] metric is wating to write\n", len(ch))
+			log.Println(m.String())
+			//influxdb.Write(m)
+		}
+	}()
 }
