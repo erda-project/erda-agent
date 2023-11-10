@@ -1,0 +1,10 @@
+ebpf-agent:
+
+memory:
+
+traffic:
+
+agent.controller:
+  plugins:
+    - memory
+    - traffic
