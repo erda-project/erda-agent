@@ -11,7 +11,7 @@ import (
 	"strings"
 
 	"github.com/erda-project/ebpf-agent/pkg/k8sclient"
-	"github.com/erda-project/ebpf-agent/plugins/traffic/ebpf"
+	"github.com/erda-project/ebpf-agent/pkg/plugins/traffic/ebpf"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/runtime"
@@ -32,13 +32,13 @@ type Controller struct {
 	Ebpfs     map[int]*ebpf.Ebpf
 }
 
-func NewController(ch chan ebpf.Metric) Controller {
+func NewController(ch chan ebpf.Metric) *Controller {
 	config := k8sclient.GetRestConfig()
 	clientset, err := kubernetes.NewForConfig(config)
 	if err != nil {
 		log.Panic(err)
 	}
-	return Controller{
+	return &Controller{
 		Clientset: clientset,
 		Config:    config,
 		Ch:        ch,

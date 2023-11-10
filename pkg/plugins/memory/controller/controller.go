@@ -7,7 +7,7 @@ import (
 	"github.com/erda-project/ebpf-agent/metric"
 	"github.com/erda-project/ebpf-agent/pkg/criruntime"
 	"github.com/erda-project/ebpf-agent/pkg/k8sclient"
-	"github.com/erda-project/ebpf-agent/plugins/memory/oomprocesser"
+	oomprocesser2 "github.com/erda-project/ebpf-agent/pkg/plugins/memory/oomprocesser"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	runtimeapi "k8s.io/cri-api/pkg/apis/runtime/v1"
@@ -55,8 +55,8 @@ func (c *Controller) watchForOoms(ch chan metric.Metric) error {
 	//	return err
 	//}
 	//go oomParser.StreamOoms(outStream)
-	oomEventChan := make(chan *oomprocesser.OOMEvent, 10)
-	go oomprocesser.WatchOOM(oomEventChan)
+	oomEventChan := make(chan *oomprocesser2.OOMEvent, 10)
+	go oomprocesser2.WatchOOM(oomEventChan)
 
 	go func() {
 		for event := range oomEventChan {
