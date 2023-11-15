@@ -1,5 +1,8 @@
 FROM ubuntu:22.04
 
-RUN apt update && apt -y install libssl-dev dkms bc build-essential git make libelf-dev clang llvm strace tar bpfcc-tools gcc-multilib libbpf-dev linux-headers-generic flex bison
+ARG KERNEL_VERSION
 
-CMD ["sleep","infinity"]
+RUN apt update  && \
+    apt -y --no-install-recommends install libssl-dev dkms bc build-essential git make libelf-dev clang llvm strace \
+    tar bpfcc-tools gcc-multilib libbpf-dev linux-headers-${KERNEL_VERSION} flex bison && \
+    rm -rf /var/lib/apt/lists/*
