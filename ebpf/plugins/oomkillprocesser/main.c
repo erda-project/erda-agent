@@ -18,40 +18,29 @@
 struct oom_stats {
     // Pid of triggering process
     __u32 pid;
-    // Total number of pages
-     long pages;
-    __u64 knid;
     char fcomm[TASK_COMM_LEN];
     char cgroup_path[129];
 };
 
-union kernfs_node_id {
-	struct {
-		/*
-		 * blktrace will export this struct as a simplified 'struct
-		 * fid' (which is a big data struction), so userspace can use
-		 * it to find kernfs node. The layout must match the first two
-		 * fields of 'struct fid' exactly.
-		 */
-		u32		ino;
-		u32		generation;
-	};
-	u64			id;
-};
+static __always_inline int get_cgroup_name(char *buf, size_t sz) {
+    struct task_struct *cur_tsk = (struct task_struct *)bpf_get_current_task();
+    if (cur_tsk == NULL) {
+        bpf_printk("failed to get cur task\n");
+        return -1;
+    }
 
-struct kernfs_node___old {
-	union kernfs_node_id id;
-};
+    int cgrp_id = memory_cgrp_id;
 
-static inline __attribute__((always_inline)) const char *
-__get_cgroup_kn_name(const struct kernfs_node *kn)
-{
-	const char *name = NULL;
+    // failed when use BPF_PROBE_READ, but success when use BPF_CORE_READ
+    const char *name = BPF_PROBE_READ(cur_tsk, cgroups, subsys[cgrp_id], cgroup, kn, name);
+    bpf_printk("name: %s\n", name);
+    if (bpf_probe_read_kernel_str(buf, sz, name) < 0) {
+        bpf_printk("failed to get kernfs node name: %s\n", buf);
+        return -1;
+    }
+    bpf_printk("cgroup name: %s\n", buf);
 
-	if (kn)
-		bpf_probe_read(&name, sizeof(name), (void *)&kn->name);
-
-	return name;
+    return 0;
 }
 
 
@@ -97,6 +86,7 @@ int kprobe_oom_kill_process(struct pt_regs *ctx) {
     if (!p) {
         return 0;
     }
+
     struct oom_stats data = {};
     __u32 pid = bpf_get_current_pid_tgid() >> 32;
     bpf_map_update_elem(&oom_map, &pid, &data, BPF_NOEXIST);
@@ -107,50 +97,10 @@ int kprobe_oom_kill_process(struct pt_regs *ctx) {
     }
 
     s->pid = pid;
-//    get_cgroup_name(s->.cgroup_path, sizeof(s->cgroup_path));
-    bpf_probe_read(&s->pages, sizeof(s->pages), &oc->totalpages);
     bpf_get_current_comm(&s->fcomm, sizeof(s->fcomm));
-
-    struct task_struct *cur_tsk;
-    cur_tsk = (struct task_struct *)bpf_get_current_task();
-    if (cur_tsk == NULL) {
-        bpf_printk("failed to get cur task\n");
-        return 1;
-    }
-    struct css_set *cur_cgroups;
-    if (bpf_probe_read(&cur_cgroups, sizeof(cur_cgroups), (void *)&cur_tsk->cgroups) < 0) {
-        bpf_printk("failed to get task cgroups\n");
-        return 1;
-    }
-
-    struct cgroup_subsys_state *cur_subsys;
-    int cgrp_id = 0;
-    if (bpf_probe_read(&cur_subsys, sizeof(cur_subsys), (void *)&cur_cgroups->subsys[cgrp_id]) < 0 ) {
-        bpf_printk("failed to get cgroup subsys\n");
-        return 1;
-    }
-
-    struct cgroup *cur_cgroup;
-    if (bpf_probe_read(&cur_cgroup, sizeof(cur_cgroup), (void *)&cur_subsys->cgroup) < 0 ) {
-        bpf_printk("failed to get cgroup\n");
-        return 1;
-    }
-
-    struct kernfs_node *cur_kn;
-    if (bpf_probe_read(&cur_kn, sizeof(cur_kn), (void *)&cur_cgroup->kn) < 0 ) {
-        bpf_printk("failed to get kernfs node\n");
-        return 1;
-    }
-
-    union kernfs_node_id id;
-    if (bpf_probe_read(&id, sizeof(union kernfs_node_id), (void *)&cur_kn->id) < 0) {
-        bpf_printk("failed to get kernfs node id\n");
-        return 1;
-    }
-
-    if (bpf_probe_read_kernel_str(s->cgroup_path, sizeof(s->cgroup_path), &cur_kn->name) < 0) {
-        bpf_printk("failed to get kernfs node name: %s\n", s->cgroup_path);
-        return 1;
+    if (get_cgroup_name(s->cgroup_path, sizeof(s->cgroup_path)) < 0) {
+        bpf_printk("failed to get cgroup name\n");
+        return -1;
     }
 
 //    char idfmt[] = "oom process cgroup knid: %d, pages: %d, name: %s\n";
