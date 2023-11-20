@@ -65,9 +65,7 @@ func WatchOOM(ch chan<- *OOMEvent) {
 func DecodeMapItem(e []byte) *OOMEvent {
 	m := new(OOMEvent)
 	m.Pid = binary.LittleEndian.Uint32(e[0:4])
-	m.Pages = binary.BigEndian.Uint64(e[4:12])
-	m.KnID = binary.BigEndian.Uint64(e[12:20])
-	m.FComm = string(e[20:36])
-	m.CgroupPath = string(e[36:])
+	m.FComm = string(e[4:20])
+	m.CgroupPath = string(e[20:])
 	return m
 }
