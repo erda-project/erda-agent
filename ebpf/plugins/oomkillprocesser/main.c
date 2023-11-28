@@ -7,7 +7,7 @@
 #include <linux/oom.h>
 #include <linux/cgroup.h>
 #include <linux/kernfs.h>
-#include <stdio.h>
+#include "../../include/common.h"
 
 #ifndef TASK_COMM_LEN
 #define TASK_COMM_LEN 16
@@ -19,6 +19,7 @@ struct oom_stats {
     // Pid of triggering process
     __u32 pid;
     char fcomm[TASK_COMM_LEN];
+    __u32 cgroupid;
     char cgroup_path[129];
 };
 
@@ -33,7 +34,6 @@ static __always_inline int get_cgroup_name(char *buf, size_t sz) {
 
     // failed when use BPF_PROBE_READ, but success when use BPF_CORE_READ
     const char *name = BPF_PROBE_READ(cur_tsk, cgroups, subsys[cgrp_id], cgroup, kn, name);
-    bpf_printk("name: %s\n", name);
     if (bpf_probe_read_kernel_str(buf, sz, name) < 0) {
         bpf_printk("failed to get kernfs node name: %s\n", buf);
         return -1;
@@ -50,33 +50,6 @@ struct bpf_map_def SEC("maps/package_map") oom_map = {
 	.value_size = sizeof(struct oom_stats),
 	.max_entries = 1024 * 16,
 };
-
-#define bpf_printk(fmt, ...)                                    \
-({                                                              \
-               char ____fmt[] = fmt;                            \
-               bpf_trace_printk(____fmt, sizeof(____fmt),       \
-                                ##__VA_ARGS__);                 \
-})
-
-//static int get_dir_by_knid(int kn_id, char *buf, unsigned int size)
-//{
-//	FILE *fp = NULL;
-//	char cmd[SYM_LEN];
-//
-//	sprintf(cmd, "find /sys/fs/cgroup/memory/ -inum %d", kn_id);
-//
-//	fp = popen(cmd, "r");
-//	if (fp == NULL) {
-//		return -1;
-//	}
-//
-//	fgets(buf, size, fp);
-//
-//	pclose(fp);
-////	bpf_trace_printk(cmd, sizeof(cmd));
-//
-//	return 0;
-//}
 
 SEC("kprobe/oom_kill_process")
 int kprobe_oom_kill_process(struct pt_regs *ctx) {
@@ -98,10 +71,14 @@ int kprobe_oom_kill_process(struct pt_regs *ctx) {
 
     s->pid = pid;
     bpf_get_current_comm(&s->fcomm, sizeof(s->fcomm));
+    __u32 cgroupid = bpf_get_current_cgroup_id();
+    s->cgroupid = cgroupid;
+
     if (get_cgroup_name(s->cgroup_path, sizeof(s->cgroup_path)) < 0) {
         bpf_printk("failed to get cgroup name\n");
         return -1;
     }
+//    get_dir_by_knid(cgroupid, s->cgroup_path, sizeof(s->cgroup_path));
 
 //    char idfmt[] = "oom process cgroup knid: %d, pages: %d, name: %s\n";
 //    bpf_trace_printk(idfmt, sizeof(idfmt), s->knid, s->pages, s->cgroup_path);

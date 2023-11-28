@@ -7,6 +7,8 @@ require (
 	github.com/erda-project/erda-infra v1.0.8
 	github.com/euank/go-kmsg-parser v2.0.0+incompatible
 	github.com/influxdata/influxdb-client-go/v2 v2.12.3
+	github.com/patrickmn/go-cache v2.1.0+incompatible
+	github.com/prometheus/procfs v0.12.0
 	k8s.io/api v0.28.1
 	k8s.io/apimachinery v0.28.1
 	k8s.io/client-go v0.28.1
@@ -53,7 +55,7 @@ require (
 	golang.org/x/mod v0.10.0 // indirect
 	golang.org/x/net v0.14.0 // indirect
 	golang.org/x/oauth2 v0.10.0 // indirect
-	golang.org/x/sys v0.11.0 // indirect
+	golang.org/x/sys v0.12.0 // indirect
 	golang.org/x/term v0.11.0 // indirect
 	golang.org/x/text v0.12.0 // indirect
 	golang.org/x/time v0.3.0 // indirect

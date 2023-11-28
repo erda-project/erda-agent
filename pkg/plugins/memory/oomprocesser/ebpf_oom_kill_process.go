@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"os"
+	"os/exec"
 	"time"
 
 	"github.com/cilium/ebpf"
@@ -58,14 +60,22 @@ func WatchOOM(ch chan<- *OOMEvent) {
 			}
 			ch <- oomEvent
 		}
-		time.Sleep(1 * time.Second)
+		time.Sleep(100 * time.Millisecond)
 	}
+}
+
+func printCgroup(cgroupid uint32) {
+	buildCmd := exec.Command("/bin/bash", "-c", fmt.Sprintf("grep -i '%d' -R /sys/fs/cgroup/", cgroupid))
+	buildCmd.Stdout = os.Stdout
+	buildCmd.Stderr = os.Stderr
+	buildCmd.Run()
 }
 
 func DecodeMapItem(e []byte) *OOMEvent {
 	m := new(OOMEvent)
 	m.Pid = binary.LittleEndian.Uint32(e[0:4])
 	m.FComm = string(e[4:20])
-	m.CgroupPath = string(e[20:])
+	m.CgroupID = binary.LittleEndian.Uint32(e[20:24])
+	m.CgroupPath = string(e[24:])
 	return m
 }

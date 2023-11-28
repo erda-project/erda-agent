@@ -1,12 +1,11 @@
 package controller
 
 import (
-	"log"
 	"strings"
 
 	"github.com/erda-project/ebpf-agent/metric"
 	"github.com/erda-project/ebpf-agent/pkg/criruntime"
-	"github.com/erda-project/ebpf-agent/pkg/k8sclient"
+	"github.com/erda-project/ebpf-agent/pkg/plugins/kprobe"
 	oomprocesser2 "github.com/erda-project/ebpf-agent/pkg/plugins/memory/oomprocesser"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -24,23 +23,26 @@ type Controller struct {
 	clientSet      *kubernetes.Clientset
 	config         *rest.Config
 	runtimeFactory criruntime.Factory
+
+	kprobeHelper kprobe.Interface
 }
 
-func NewController() Controller {
-	config := k8sclient.GetRestConfig()
-	clientSet, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		log.Panic(err)
-	}
-
-	runtimeFactory, err := criruntime.NewFactory("/var/run")
-	if err != nil {
-		log.Panic(err)
-	}
+func NewController(helper kprobe.Interface) Controller {
+	//config := k8sclient.GetRestConfig()
+	//clientSet, err := kubernetes.NewForConfig(config)
+	//if err != nil {
+	//	log.Panic(err)
+	//}
+	//
+	//runtimeFactory, err := criruntime.NewFactory("/var/run")
+	//if err != nil {
+	//	log.Panic(err)
+	//}
 	return Controller{
-		clientSet:      clientSet,
-		config:         config,
-		runtimeFactory: runtimeFactory,
+		kprobeHelper: helper,
+		//clientSet:      clientSet,
+		//config:         config,
+		//runtimeFactory: runtimeFactory,
 	}
 }
 
@@ -60,6 +62,16 @@ func (c *Controller) watchForOoms(ch chan metric.Metric) error {
 
 	go func() {
 		for event := range oomEventChan {
+			stat, err := c.kprobeHelper.GetSysctlStat(event.Pid)
+			if err != nil {
+				klog.Errorf("failed to get sysctl stat for oom event, err: %v", err)
+				continue
+			}
+			klog.Infof("oom event pid: %d, stat: %v", event.Pid, stat)
+			pod, err := c.kprobeHelper.GetPodByUID(strings.ReplaceAll(stat.PodUID, "_", "-"))
+			if err == nil {
+				klog.Infof("oom event pod name: %s, namespace: %s", pod.Name, pod.Namespace)
+			}
 			klog.Infof("oom event: %+v", event)
 		}
 		//for oomInstance := range outStream {

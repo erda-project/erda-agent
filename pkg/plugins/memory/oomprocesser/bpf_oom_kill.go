@@ -13,6 +13,7 @@ import (
 type OOMEvent struct {
 	Pid        uint32 `json:"pid"`
 	FComm      string `json:"fcomm"`
+	CgroupID   uint32 `json:"cgroupID"`
 	CgroupPath string `json:"cgroup_path"`
 }
 
