@@ -4,7 +4,10 @@ memory:
 
 traffic:
 
+kprobe:
+
 agent.controller:
   plugins:
     - memory
+    - kprobe
     - traffic
