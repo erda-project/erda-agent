@@ -84,6 +84,9 @@ spec:
           - name: var-run
             mountPath: /var/run
             readOnly: true
+          - name: contianerd-run
+            mountPath: /run/containerd
+            readOnly: true
         securityContext:
           privileged: true
         terminationMessagePath: /dev/termination-log
@@ -101,6 +104,9 @@ spec:
         - name: var-run
           hostPath:
             path: /var/run
+        - name: contianerd-run
+          hostPath:
+            path: /run/containerd
   updateStrategy:
     rollingUpdate:
       maxUnavailable: 5

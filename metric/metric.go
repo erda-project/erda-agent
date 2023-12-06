@@ -2,14 +2,15 @@ package metric
 
 import (
 	"fmt"
-	"time"
 )
 
 type Metric struct {
 	Measurement string
-	Tags        map[string]string
-	Fields      map[string]interface{}
-	Ts          time.Time
+	Name        string                 `json:"name"`
+	Timestamp   int64                  `json:"timestamp"`
+	Tags        map[string]string      `json:"tags"`
+	Fields      map[string]interface{} `json:"fields"`
+	OrgName     string                 `json:"-"`
 }
 
 func (m *Metric) AddTags(k string, v string) {

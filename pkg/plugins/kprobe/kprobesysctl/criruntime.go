@@ -41,16 +41,17 @@ const (
 //
 //	systemd: /kubepods.slice/kubepods-<QoS-class>.slice/kubepods-<QoS-class>-pod<pod-UID>.slice/<container-iD>.scope
 //	cgroupfs: /kubepods/<QoS-class>/pod<pod-UID>/<container-iD>
-func readCgroupInfoFromPID(pid uint32) (string, string, error) {
+func readCgroupInfoFromPID(pid uint32) (string, string, string, error) {
 	r, err := os.Open(fmt.Sprintf("/rootfs/proc/%d/cgroup", pid))
 	if err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
 	defer r.Close()
 
 	s := bufio.NewScanner(r)
 	var podUID string
 	var containerID string
+	var podPath string
 	for s.Scan() {
 		fields := strings.SplitN(s.Text(), ":", 3)
 		if len(fields) != 3 {
@@ -71,20 +72,22 @@ func readCgroupInfoFromPID(pid uint32) (string, string, error) {
 			}
 			podUID = uid
 			containerID = id
+			podPath = cgroupPath
 			break
 		} else if containerIDRegexp.MatchString(id) {
 			containerID = id
 		}
 	}
 	if err := s.Err(); err != nil {
-		return "", "", err
+		return "", "", "", err
 	}
-	return podUID, containerID, nil
+	return podUID, containerID, podPath, nil
 }
 
-func readCgroupInfoFromProc(cgroups []procfs.Cgroup) (string, string) {
+func readCgroupInfoFromProc(cgroups []procfs.Cgroup) (string, string, string) {
 	var podUID string
 	var containerID string
+	var podPath string
 	for _, cgroup := range cgroups {
 		cgroupPath := cgroup.Path
 		dir, id := path.Split(cgroupPath)
@@ -101,12 +104,13 @@ func readCgroupInfoFromProc(cgroups []procfs.Cgroup) (string, string) {
 			}
 			podUID = uid
 			containerID = id
+			podPath = cgroupPath
 			break
 		} else if containerIDRegexp.MatchString(id) {
 			containerID = id
 		}
 	}
-	return podUID, containerID
+	return podUID, containerID, podPath
 }
 
 func (k *KprobeSysctlController) refreshProcCgroupInfo() error {
@@ -128,9 +132,10 @@ func (k *KprobeSysctlController) refreshProcCgroupInfo() error {
 			Pid:      uint32(proc.PID),
 			IsSystem: true,
 		}
-		podUID, containerID := readCgroupInfoFromProc(cgroups)
+		podUID, containerID, podPath := readCgroupInfoFromProc(cgroups)
 		stat.PodUID = podUID
 		stat.ContainerID = containerID
+		stat.ID = podPath
 		if len(podUID) > 0 || len(containerID) > 0 {
 			stat.IsSystem = false
 			klog.Infof("pid %d is in pod %s container %s", proc.PID, podUID, containerID)

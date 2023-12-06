@@ -129,13 +129,14 @@ func (k *KprobeSysctlController) WatchKprobeSysClone(ch chan<- *SysctlStat) {
 				klog.Errorf("failed to delete map item: %v", err)
 			}
 			if stat.Pid != 0 && !isContainerID(stat.ContainerID) {
-				podUID, containerID, err := readCgroupInfoFromPID(stat.Pid)
+				podUID, containerID, podPath, err := readCgroupInfoFromPID(stat.Pid)
 				if err != nil {
 					//klog.Errorf("failed to get cgroups for pid %d: %v", stat.Pid, err)
 					goto judge
 				}
 				stat.PodUID = podUID
 				stat.ContainerID = containerID
+				stat.ID = podPath
 				if stat.PodUID != "" || stat.ContainerID != "" {
 					stat.IsSystem = false
 					//klog.Infof("find containerID: %s, poduid: %s for pid: %d", stat.ContainerID, stat.PodUID, stat.Pid)

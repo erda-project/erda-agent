@@ -1,12 +1,16 @@
 package controller
 
 import (
+	"log"
 	"strings"
+	"time"
 
 	"github.com/erda-project/ebpf-agent/metric"
 	"github.com/erda-project/ebpf-agent/pkg/criruntime"
 	"github.com/erda-project/ebpf-agent/pkg/plugins/kprobe"
+	"github.com/erda-project/ebpf-agent/pkg/plugins/kprobe/kprobesysctl"
 	oomprocesser2 "github.com/erda-project/ebpf-agent/pkg/plugins/memory/oomprocesser"
+	v1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	runtimeapi "k8s.io/cri-api/pkg/apis/runtime/v1"
@@ -34,15 +38,15 @@ func NewController(helper kprobe.Interface) Controller {
 	//	log.Panic(err)
 	//}
 	//
-	//runtimeFactory, err := criruntime.NewFactory("/var/run")
-	//if err != nil {
-	//	log.Panic(err)
-	//}
+	runtimeFactory, err := criruntime.NewFactory("/run/containerd")
+	if err != nil {
+		log.Panic(err)
+	}
 	return Controller{
 		kprobeHelper: helper,
 		//clientSet:      clientSet,
 		//config:         config,
-		//runtimeFactory: runtimeFactory,
+		runtimeFactory: runtimeFactory,
 	}
 }
 
@@ -69,9 +73,12 @@ func (c *Controller) watchForOoms(ch chan metric.Metric) error {
 			}
 			klog.Infof("oom event pid: %d, stat: %v", event.Pid, stat)
 			pod, err := c.kprobeHelper.GetPodByUID(strings.ReplaceAll(stat.PodUID, "_", "-"))
-			if err == nil {
-				klog.Infof("oom event pod name: %s, namespace: %s", pod.Name, pod.Namespace)
+			if err != nil {
+				klog.Errorf("failed to get pod by uid: %s, err: %v", stat.PodUID, err)
+				continue
 			}
+			oomMetric := c.convertOomEvent2Metric(event, pod, stat)
+			ch <- oomMetric
 			klog.Infof("oom event: %+v", event)
 		}
 		//for oomInstance := range outStream {
@@ -92,6 +99,41 @@ func (c *Controller) watchForOoms(ch chan metric.Metric) error {
 		//}
 	}()
 	return nil
+}
+
+func (c *Controller) convertOomEvent2Metric(event *oomprocesser2.OOMEvent, pod v1.Pod, stat kprobesysctl.SysctlStat) metric.Metric {
+	var metric metric.Metric
+	metric.Measurement = "docker_container_summary"
+	metric.Name = "docker_container_summary"
+	metric.Timestamp = time.Now().UnixNano()
+	metric.OrgName = pod.Labels["DICE_ORG_NAME"]
+	metric.AddTags("name", strings.TrimLeft(pod.Status.ContainerStatuses[0].ContainerID, "containerd://"))
+	metric.AddTags("namespace", pod.Namespace)
+	metric.AddTags("pod", pod.Name)
+	metric.AddTags("container", pod.Spec.Containers[0].Name)
+	metric.AddTags("image", pod.Spec.Containers[0].Image)
+	metric.AddTags("application_id", pod.Labels["DICE_APPLICATION_ID"])
+	metric.AddTags("application_name", pod.Labels["DICE_APPLICATION_NAME"])
+	metric.AddTags("cluster_name", pod.Labels["DICE_CLUSTER_NAME"])
+	metric.AddTags("container_id", stat.ContainerID)
+	metric.AddTags("container_image", pod.Spec.Containers[0].Image)
+	metric.AddTags("id", stat.ID)
+	metric.AddTags("deployment_id", pod.Labels["DICE_DEPLOYMENT_ID"])
+	metric.AddTags("org_id", pod.Labels["DICE_ORG_ID"])
+	metric.AddTags("org_name", pod.Labels["DICE_ORG_NAME"])
+	metric.AddTags("pod_ip", pod.Status.PodIP)
+	metric.AddTags("pod_name", pod.Name)
+	metric.AddTags("pod_namespace", pod.Namespace)
+	metric.AddTags("pod_uid", string(pod.UID))
+	metric.AddTags("project_id", pod.Labels["DICE_PROJECT_ID"])
+	metric.AddTags("project_name", pod.Labels["DICE_PROJECT_NAME"])
+	metric.AddTags("runtime_id", pod.Labels["DICE_RUNTIME_ID"])
+	metric.AddTags("runtime_name", pod.Labels["DICE_RUNTIME_NAME"])
+	metric.AddTags("terminus_key", pod.Annotations["msp.erda.cloud/terminus_key"])
+	metric.AddTags("workspace", pod.Labels["DICE_WORKSPACE"])
+	metric.AddTags("metric_source", "ebpf-agent")
+	metric.AddField("oomkilled", true)
+	return metric
 }
 
 func convertContainerStatsToMetric(contStats *runtimeapi.ContainerStats) metric.Metric {
