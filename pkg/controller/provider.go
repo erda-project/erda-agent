@@ -9,6 +9,8 @@ import (
 	"k8s.io/klog"
 
 	"github.com/erda-project/ebpf-agent/metric"
+	"github.com/erda-project/ebpf-agent/pkg/envconf"
+	"github.com/erda-project/ebpf-agent/pkg/exporter/collector"
 	"github.com/erda-project/erda-infra/base/servicehub"
 )
 
@@ -19,8 +21,9 @@ type Config struct {
 type provider struct {
 	Cfg *Config
 
-	ctx     servicehub.Context
-	plugins []Plugin
+	ctx             servicehub.Context
+	plugins         []Plugin
+	collectorClient *collector.ReportClient
 }
 
 func (p *provider) Init(ctx servicehub.Context) error {
@@ -30,6 +33,9 @@ func (p *provider) Init(ctx servicehub.Context) error {
 	}
 	p.ctx = ctx
 	p.plugins = make([]Plugin, 0, len(p.Cfg.Plugins))
+	reportConfig := &collector.CollectorConfig{}
+	envconf.MustLoad(reportConfig)
+	p.collectorClient = collector.CreateReportClient(reportConfig)
 	return nil
 }
 
@@ -56,6 +62,14 @@ func (p *provider) Run(ctx context.Context) error {
 			//处理metric, print / influxdb / prometheus / erda   等
 			klog.Infof("[%d] metric is waiting to write", len(ch))
 			klog.Infof(m.String())
+			// TODO： push other metrics to collector
+			if m.Name == "docker_container_summary" {
+				if err := p.collectorClient.Send([]*metric.Metric{&m}); err != nil {
+					klog.Errorf("send metric to collector error: %v", err)
+					continue
+				}
+				klog.Infof("send metric to collector success")
+			}
 			//influxdb.Write(m)
 		}
 	}

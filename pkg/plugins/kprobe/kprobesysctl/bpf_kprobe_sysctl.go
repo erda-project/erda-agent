@@ -11,6 +11,7 @@ import (
 )
 
 type SysctlStat struct {
+	ID          string `json:"id"`
 	Pid         uint32 `json:"pid"`
 	CgroupID    uint32 `json:"cgroupID"`
 	PodUID      string `json:"podUID"`
