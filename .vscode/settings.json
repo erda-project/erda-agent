@@ -1,0 +1,10 @@
+{
+    "files.associations": {
+        "bpf_traffic_helpers.h": "c",
+        "bpf_helpers.h": "c",
+        "bpf_helper_defs.h": "c",
+        "bpf.h": "c",
+        "bpf_endian.h": "c"
+    },
+    "C_Cpp.errorSquiggles": "disabled"
+}

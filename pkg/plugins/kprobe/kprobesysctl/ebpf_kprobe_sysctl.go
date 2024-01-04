@@ -26,10 +26,11 @@ var (
 )
 
 type KprobeSysctlController struct {
-	sysCtlCache *cache.Cache
-	podCache    *cache.Cache
-	clientSet   *kubernetes.Clientset
-	objs        bpfObjects
+	sysCtlCache  *cache.Cache
+	podCache     *cache.Cache
+	serviceCache *cache.Cache
+	clientSet    *kubernetes.Clientset
+	objs         bpfObjects
 }
 
 func New(clientSet *kubernetes.Clientset) *KprobeSysctlController {
@@ -41,10 +42,11 @@ func New(clientSet *kubernetes.Clientset) *KprobeSysctlController {
 		log.Fatalf("loading objects: %v", err)
 	}
 	return &KprobeSysctlController{
-		clientSet:   clientSet,
-		sysCtlCache: cache.New(time.Hour, 10*time.Minute),
-		podCache:    cache.New(time.Hour, 10*time.Minute),
-		objs:        objs,
+		clientSet:    clientSet,
+		sysCtlCache:  cache.New(time.Hour, 10*time.Minute),
+		podCache:     cache.New(time.Hour, 10*time.Minute),
+		serviceCache: cache.New(time.Hour, 10*time.Minute),
+		objs:         objs,
 	}
 }
 
@@ -62,6 +64,13 @@ func (k *KprobeSysctlController) GetPodByUID(uid string) (corev1.Pod, error) {
 	return corev1.Pod{}, fmt.Errorf("failed to find pod for uid: %s", uid)
 }
 
+func (k *KprobeSysctlController) GetService(ip string) (corev1.Service, error) {
+	if svc, ok := k.serviceCache.Get(ip); ok {
+		return svc.(corev1.Service), nil
+	}
+	return corev1.Service{}, fmt.Errorf("failed to get service from cache, ip: %s", ip)
+}
+
 func (k *KprobeSysctlController) Start(ch chan<- *SysctlStat) error {
 	if err := k.refreshProcCgroupInfo(); err != nil {
 		return err
@@ -69,10 +78,15 @@ func (k *KprobeSysctlController) Start(ch chan<- *SysctlStat) error {
 	if err := k.refreshPodInfo(); err != nil {
 		return err
 	}
-	stopper := make(chan struct{})
+	if err := k.refreshServiceInfo(nil); err != nil {
+		return err
+	}
+
 	factory := informers.NewSharedInformerFactory(k.clientSet, 0)
-	informer := factory.Core().V1().Pods().Informer()
-	informer.AddEventHandler(clientgoCache.ResourceEventHandlerFuncs{
+	// pod informer
+	podInformerStopper := make(chan struct{})
+	podInformer := factory.Core().V1().Pods().Informer()
+	podInformer.AddEventHandler(clientgoCache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			newPod := obj.(*corev1.Pod)
 			if newPod.Status.Reason == "Evicted" {
@@ -89,10 +103,43 @@ func (k *KprobeSysctlController) Start(ch chan<- *SysctlStat) error {
 		// UpdateFunc: func(oldObj interface{}, newObj interface{}) {
 		// },
 	})
-	go informer.Run(stopper)
+	go podInformer.Run(podInformerStopper)
+
+	// service informer
+	serviceInformerStopper := make(chan struct{})
+	serviceInformer := factory.Core().V1().Services().Informer()
+	serviceInformer.AddEventHandler(clientgoCache.ResourceEventHandlerFuncs{
+		AddFunc: func(obj interface{}) {
+			newSvc, ok := obj.(*corev1.Service)
+			if ok {
+				_ = k.refreshServiceInfo(newSvc)
+			}
+		},
+		DeleteFunc: func(obj interface{}) {
+			svc, ok := obj.(*corev1.Service)
+			if ok && (svc.Spec.Type == corev1.ServiceTypeClusterIP && svc.Spec.ClusterIP != corev1.ClusterIPNone) {
+				k.serviceCache.Delete(svc.Spec.ClusterIP)
+			}
+		},
+		UpdateFunc: func(oldObj, newObj interface{}) {
+			oldSvc, ok := oldObj.(*corev1.Service)
+			if ok && (oldSvc.Spec.Type == corev1.ServiceTypeClusterIP && oldSvc.Spec.ClusterIP != corev1.ClusterIPNone) {
+				k.serviceCache.Delete(oldSvc.Spec.ClusterIP)
+			}
+			newSvc, ok := newObj.(*corev1.Service)
+			if ok {
+				_ = k.refreshServiceInfo(newSvc)
+			}
+		},
+	})
+
+	go serviceInformer.Run(serviceInformerStopper)
+
+	// todo: add recover and context control
 	go func() {
 		pidTicker := time.NewTicker(time.Hour)
 		podTicker := time.NewTicker(30 * time.Minute)
+		svcTicker := time.NewTicker(time.Minute)
 		for {
 			select {
 			case <-pidTicker.C:
@@ -102,6 +149,10 @@ func (k *KprobeSysctlController) Start(ch chan<- *SysctlStat) error {
 			case <-podTicker.C:
 				if err := k.refreshPodInfo(); err != nil {
 					klog.Errorf("failed to refresh pod infos, err: %v", err)
+				}
+			case <-svcTicker.C:
+				if err := k.refreshServiceInfo(nil); err != nil {
+					klog.Errorf("failed to refresh service infos, err: %v", err)
 				}
 			}
 		}

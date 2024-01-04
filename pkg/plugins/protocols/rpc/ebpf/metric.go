@@ -4,12 +4,13 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"k8s.io/klog"
 	"net"
 	"strconv"
 	"strings"
 	"syscall"
 	"unsafe"
+
+	"k8s.io/klog"
 
 	"github.com/erda-project/ebpf-agent/metric"
 	"github.com/erda-project/ebpf-agent/pkg/hpack"
