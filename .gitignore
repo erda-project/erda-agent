@@ -1,7 +1,23 @@
-/main
-/main.bpf.o
+# Files for macos
+*.DS_Store
+._*
+
+# Files for ideas
+.idea/*
+*.iml
+
+# Files for vim
+.*.sw?
+
+# Files for vscode
+.vscode/*
+.vendor/*
+
+# Local History dir
+.history/
+
+# Dependency directories (remove the comment below to include it)
 /vendor/
-/target
-/1.log
-/1.sh
-.idea/
+
+# Compiled eBPF programs
+target/
