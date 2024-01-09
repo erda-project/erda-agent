@@ -7,6 +7,7 @@ import (
 	_ "github.com/erda-project/ebpf-agent/pkg/controller"
 	_ "github.com/erda-project/ebpf-agent/pkg/plugins/kprobe"
 	_ "github.com/erda-project/ebpf-agent/pkg/plugins/memory"
+	_ "github.com/erda-project/ebpf-agent/pkg/plugins/protocols/rpc"
 	_ "github.com/erda-project/ebpf-agent/pkg/plugins/traffic"
 	"github.com/erda-project/erda-infra/base/servicehub"
 )

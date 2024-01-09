@@ -6,8 +6,12 @@ traffic:
 
 kprobe:
 
+rpc:
+
+
 agent.controller:
   plugins:
+    - rpc
     - memory
     - kprobe
     - traffic
