@@ -14,17 +14,18 @@ type provider struct {
 }
 
 func (p *provider) Init() error {
-	p.ch = make(chan ebpf.Metric, 100)
 	return nil
 }
 
 func (p *provider) Gather(c chan metric.Metric) {
+	p.ch = make(chan ebpf.Metric, 100)
 	links, err := netlink.LinkList()
 	if err != nil {
 		panic(err)
 	}
 	for _, link := range links {
-		if link.Type() != "device" && link.Attrs().Index != 2 {
+		// TODO: filter veth for pods
+		if link.Type() == "device" {
 			continue
 		}
 		go func(l netlink.Link) {

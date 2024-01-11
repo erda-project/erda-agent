@@ -56,19 +56,16 @@ static __always_inline bool parse_sock_info(struct sock *s, connection_info_t *i
     u16 family;
     BPF_PROBE_READ_INTO(&family, s, __sk_common.skc_family);
 
-    if (family == AF_INET) {
-        BPF_PROBE_READ_INTO(&info->s_port, s, __sk_common.skc_num);
-        BPF_PROBE_READ_INTO(&info->s_addr, s, __sk_common.skc_rcv_saddr);
-        BPF_PROBE_READ_INTO(&info->d_port, s, __sk_common.skc_dport);
-        info->d_port = bpf_ntohs(info->d_port);
-        BPF_PROBE_READ_INTO(&info->d_addr, s, __sk_common.skc_daddr);
-//        bpf_printk("sock s addr: %llx, s port: %d\n", info->s_addr, info->s_port);
-//        bpf_printk("sock d addr: %llx, d port: %d\n", info->d_addr, info->d_port);
-
-        return true;
+    if (family != AF_INET && family != AF_INET6) {
+        return false;
     }
+    BPF_PROBE_READ_INTO(&info->s_port, s, __sk_common.skc_num);
+    BPF_PROBE_READ_INTO(&info->s_addr, s, __sk_common.skc_rcv_saddr);
+    BPF_PROBE_READ_INTO(&info->d_port, s, __sk_common.skc_dport);
+    info->d_port = bpf_ntohs(info->d_port);
+    BPF_PROBE_READ_INTO(&info->d_addr, s, __sk_common.skc_daddr);
 
-    return false;
+    return true;
 }
 
 static __always_inline bool likely_ephemeral_port(u16 port) {

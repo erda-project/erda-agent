@@ -2,12 +2,14 @@ package ebpf
 
 import (
 	"encoding/binary"
+	"encoding/hex"
 	"fmt"
+	"github.com/chrismoos/hpack"
+	"k8s.io/klog"
 	"net"
 	"strconv"
 	"strings"
 	"syscall"
-	"time"
 	"unsafe"
 
 	"github.com/erda-project/ebpf-agent/metric"
@@ -15,43 +17,34 @@ import (
 
 type MapPackage struct {
 	//HTTP, RPC, MySQL etc.
-	Type     uint32
+	Phase    uint32
 	DstIP    string
 	DstPort  uint16
 	SrcIP    string
 	SrcPort  uint16
-	Ack      uint32
-	Seq      uint32
+	Seq      uint16
 	Duration uint32
-	Host     string
-	Method   string
-	Protocol string
-	URL      string
-	Code     string
 	Pid      uint32
+	PathLen  int
+	Path     string
+	Status   string
 }
 
 type Metric struct {
-	//HTTP, RPC, MySQL etc.
-	Type uint32
-	//从本pod来看是被请求(0)还是请求(1)
-	Flow        int
+	Phase       uint32
 	DstIP       string
 	DstPort     uint16
 	SrcIP       string
 	SrcPort     uint16
-	Duration    uint32
-	Host        string
-	Method      string
-	Protocol    string
-	URL         string
-	Code        string
-	IfIndex     int
+	Seq         uint16
 	PodName     string
 	NodeName    string
 	NameSpace   string
 	ServiceName string
 	Pid         uint32
+	PathLen     int
+	Path        string
+	Status      string
 }
 
 func (m *Metric) CovertMetric() metric.Metric {
@@ -61,75 +54,62 @@ func (m *Metric) CovertMetric() metric.Metric {
 	metric.AddTags("nodename", m.NodeName)
 	metric.AddTags("namespace", m.NameSpace)
 	metric.AddTags("servicename", m.ServiceName)
-	metric.AddTags("type", strconv.Itoa(int(m.Type)))
-	metric.AddTags("flow", strconv.Itoa(m.Flow))
 	metric.AddTags("dstip", m.DstIP)
 	metric.AddTags("dstport", strconv.Itoa(int(m.DstPort)))
 	metric.AddTags("srcip", m.SrcIP)
 	metric.AddTags("srcport", strconv.Itoa(int(m.SrcPort)))
-	metric.AddTags("method", m.Method)
-	metric.AddTags("protocol", m.Protocol)
-	metric.AddTags("url", m.URL)
-	metric.AddTags("code", m.Code)
-	metric.AddTags("ifinfex", strconv.Itoa(m.IfIndex))
-	metric.AddField("duration", m.Duration)
 	return metric
 }
 
 func (m *Metric) String() string {
-	return fmt.Sprintf("%s %d %d [%s][%d] --> [%s][%d][%s %s] ====> %s [%dms] \n%s %s %s %s %d pid: %d\n",
-		time.Now().Format("2006-01-02 15:04:05"), m.Type, m.Flow, m.SrcIP, m.SrcPort, m.DstIP, m.DstPort, m.Method, m.URL, m.Code, m.Duration,
-		m.NodeName, m.NameSpace, m.PodName, m.ServiceName, m.IfIndex, m.Pid,
-	)
+	return fmt.Sprintf("phase: %d, dstip: %s, dstport: %d, srcip: %s, srcport: %d, seq: %d",
+		m.Phase, m.DstIP, m.DstPort, m.SrcIP, m.SrcPort, m.Seq)
 }
 
 func DecodeMapItem(e []byte) *MapPackage {
 	m := new(MapPackage)
+	m.Phase = uint32(e[0])
 	m.DstIP = net.IP(e[4:8]).String()
-	m.DstPort = binary.BigEndian.Uint16(e[8:10])
+	m.DstPort = binary.BigEndian.Uint16(e[8:12])
 	m.SrcIP = net.IP(e[12:16]).String()
 	m.SrcPort = binary.BigEndian.Uint16(e[16:20])
-	m.Ack = binary.BigEndian.Uint32(e[20:24])
-	m.Seq = binary.BigEndian.Uint32(e[24:28])
-	m.Duration = binary.LittleEndian.Uint32(e[28:32]) / (1000 * 1000)
-	//method, url, host := DecodeHTTPRequest(string(e[32:212]))
-	//m.Method = method
-	//m.URL = url
-	//m.Host = host
-	//code := DecodeHTTPResponse(e[212:392])
-	//m.Code = code
-	m.Type = binary.LittleEndian.Uint32(e[32:36])
-	m.Pid = binary.LittleEndian.Uint32(e[36:40])
+	m.Seq = binary.BigEndian.Uint16(e[20:24])
+	m.Duration = binary.BigEndian.Uint32(e[24:28])
+	m.Pid = binary.LittleEndian.Uint32(e[28:32])
+	m.PathLen = int(e[32])
+	var err error
+	if m.PathLen > 0 && m.PathLen+33 < len(e) {
+		m.Path, err = encodeHeader(e[33 : m.PathLen+33+1])
+		if err != nil {
+			klog.Errorf("encode path header error: %v", err)
+		}
+	}
+	m.Status, err = encodeHeader(e[83:])
+	if err != nil {
+		klog.Errorf("encode status header error: %v", err)
+	}
 	return m
 }
 
-// method, url, host
-func DecodeHTTPRequest(s string) (string, string, string) {
-	// var host string
-	//使用正则会有较多的开销，尽量使用byte的位置截取
-	// pattern := `Host:\s+(\S+)`
-	// re := regexp.MustCompile(pattern)
-	// match := re.FindStringSubmatch(s)
-
-	// if len(match) > 1 {
-	// 	// 输出匹配到的 Host
-	// 	host = match[1]
-	// }
-	lines := strings.Split(s, "\n")
-	items := strings.Fields(lines[0])
-	if len(items) < 2 {
-		return "", "", ""
+func encodeHeader(source []byte) (string, error) {
+	encodeString := hex.EncodeToString(source)
+	encodePath := strings.TrimRight(encodeString, "00")
+	encodedHex := []byte(encodePath)
+	encoded := make([]byte, len(encodedHex)/2)
+	_, err := hex.Decode(encoded, encodedHex)
+	if err != nil {
+		return "", err
 	}
-	return items[0], items[1], ""
-}
-
-// httpcode
-func DecodeHTTPResponse(p []byte) string {
-	//response, HTTP/1.1 200 OK
-	if len(p) < 11 {
-		return ""
+	decoder := hpack.NewDecoder(2048)
+	hf, err := decoder.Decode(encoded)
+	if err != nil {
+		return "", err
 	}
-	return string(p[9:12])
+	var value string
+	for _, h := range hf {
+		value = h.Value
+	}
+	return value, nil
 }
 
 // Htons converts to network byte order short uint16.

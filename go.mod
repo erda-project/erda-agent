@@ -20,6 +20,7 @@ require (
 
 require (
 	github.com/Microsoft/go-winio v0.6.1 // indirect
+	github.com/chrismoos/hpack v0.0.0-20160221054731-bd547c1fe6e8 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/deepmap/oapi-codegen v1.8.2 // indirect
 	github.com/emicklei/go-restful v2.9.5+incompatible // indirect
