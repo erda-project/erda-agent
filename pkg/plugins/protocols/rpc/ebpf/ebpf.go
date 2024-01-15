@@ -122,7 +122,7 @@ func (e *Ebpf) Load() error {
 	if err := syscall.SetsockoptInt(sock, syscall.SOL_SOCKET, SO_ATTACH_BPF, prog.FD()); err != nil {
 		return err
 	}
-	m := coll.DetachMap("response_map")
+	m := coll.DetachMap("grpc_trace_map")
 	var (
 		key uint32
 		val []byte
@@ -134,10 +134,7 @@ func (e *Ebpf) Load() error {
 			if err := m.Delete(key); err != nil {
 				panic(err)
 			}
-			klog.Infof("receive metric: +v", metric)
-			if metric == nil {
-				break
-			}
+			klog.Infof("receive metric: %+v", metric)
 			e.Ch <- *metric
 		}
 		time.Sleep(1 * time.Second)
@@ -147,25 +144,17 @@ func (e *Ebpf) Load() error {
 
 func (e *Ebpf) Converet(p *MapPackage) *Metric {
 	m := new(Metric)
-	m.Type = p.Type
+	m.Phase = p.Phase
 	m.DstIP = p.DstIP
 	m.DstPort = p.DstPort
 	m.SrcIP = p.SrcIP
 	m.SrcPort = p.SrcPort
-	m.Duration = p.Duration
-	m.Host = p.Host
-	m.Method = p.Method
-	m.Protocol = p.Protocol
-	m.URL = p.URL
-	m.Code = p.Code
+	m.Seq = p.Seq
 	m.NodeName = e.NodeName
-	m.IfIndex = e.IfIndex
-	if m.DstIP == e.IPaddress {
-		m.Flow = 0
-	} else {
-		m.Flow = 1
-	}
 	m.Pid = p.Pid
+	m.Path = p.Path
+	m.PathLen = p.PathLen
+	m.Status = p.Status
 	return m
 }
 
