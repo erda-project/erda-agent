@@ -13,15 +13,21 @@ enum package_phase {
 	P_RESPONSE = 2,
 };
 
+enum eth_ip_type {
+    ETH_TYPE_IPV4 = 0,
+    ETH_TYPE_IPV6 = 1,
+};
+
 #define MAX_HTTP2_PATH_CONTENT_LENGTH 50
 #define MAX_HTTP2_STATUS_HEADER_LENGTH 1
 
 struct grpc_package_t {
 	__u32 phase;
-    __u32 dstip;
-    __u32 dstport;
-	__u32 srcip;
-	__u32 srcport;
+	__u32 ip_type;
+	__u32 dstIP;
+    __u32 dstPort;
+    __u32 srcIP;
+	__u32 srcPort;
 	__u32 seq;
 	//packge的产生时间
 	__u32 duration;
@@ -123,6 +129,13 @@ typedef struct {
     // Second bit indicates if the connection is V6 (1) or V4 (0)
     __u32 metadata; // This is that big because it seems that we atleast need a 32-bit aligned struct
 } conn_tuple_t;
+
+typedef struct {
+    __u32 dstIP;
+    __u32 dstPort;
+    __u32 srcIP;
+    __u32 srcPort;
+} sock_key;
 
 typedef struct {
     __u32 data_off;
@@ -265,7 +278,6 @@ __maybe_unused static __always_inline __u64 read_conn_tuple_skb(struct __sk_buff
         tup->l3_proto = ETH_P_IPV6;
 //        struct ipv6hdr ipv6;
 //        bpf_skb_load_bytes(skb, info->data_off, &ipv6, sizeof(ipv6));
-//        bpf_printk("s_addr: %llx\n", ipv6.saddr.in6_u.u6_addr8);
         read_ipv6_skb(skb, info->data_off + offsetof(struct ipv6hdr, saddr), &tup->saddr_l, &tup->saddr_h);
         read_ipv6_skb(skb, info->data_off + offsetof(struct ipv6hdr, daddr), &tup->daddr_l, &tup->daddr_h);
         info->data_off += sizeof(struct ipv6hdr);
@@ -469,12 +481,8 @@ static __always_inline grpc_status_t judge_grpc(const struct __sk_buff *skb, con
         }
 
         info.data_off = frames[i].offset;
-//        bpf_printk("frame offset: %d, length: %d\n", frames[i].offset, frames[i].length);
 
         status = scan_headers(skb, &info, frames[i].length, pkg);
-        if (status == PAYLOAD_GRPC) {
-            bpf_printk("scan grpc package\n");
-        }
     }
 
     return status;

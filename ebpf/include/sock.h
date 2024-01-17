@@ -56,16 +56,31 @@ static __always_inline bool parse_sock_info(struct sock *s, connection_info_t *i
     u16 family;
     BPF_PROBE_READ_INTO(&family, s, __sk_common.skc_family);
 
-    if (family != AF_INET && family != AF_INET6) {
-        return false;
-    }
-    BPF_PROBE_READ_INTO(&info->s_port, s, __sk_common.skc_num);
-    BPF_PROBE_READ_INTO(&info->s_addr, s, __sk_common.skc_rcv_saddr);
-    BPF_PROBE_READ_INTO(&info->d_port, s, __sk_common.skc_dport);
-    info->d_port = bpf_ntohs(info->d_port);
-    BPF_PROBE_READ_INTO(&info->d_addr, s, __sk_common.skc_daddr);
+    if (family == AF_INET) {
+        BPF_PROBE_READ_INTO(&info->s_port, s, __sk_common.skc_num);
+        BPF_PROBE_READ_INTO(&info->s_addr, s, __sk_common.skc_rcv_saddr);
+        BPF_PROBE_READ_INTO(&info->d_port, s, __sk_common.skc_dport);
+        info->d_port = bpf_ntohs(info->d_port);
+        BPF_PROBE_READ_INTO(&info->d_addr, s, __sk_common.skc_daddr);
 
-    return true;
+        return true;
+    } else if (family == AF_INET6) {
+        BPF_PROBE_READ_INTO(&info->s_port, s, __sk_common.skc_num);
+        BPF_PROBE_READ_INTO(&info->s_addr, s, __sk_common.skc_v6_rcv_saddr.in6_u.u6_addr8);
+        if (info->s_addr == 0) {
+            BPF_PROBE_READ_INTO(&info->s_addr, s, __sk_common.skc_rcv_saddr);
+        }
+        BPF_PROBE_READ_INTO(&info->d_port, s, __sk_common.skc_dport);
+        info->d_port = bpf_ntohs(info->d_port);
+        BPF_PROBE_READ_INTO(&info->d_addr, s, __sk_common.skc_v6_daddr.in6_u.u6_addr8);
+        if (info->d_addr == 0) {
+            BPF_PROBE_READ_INTO(&info->d_addr, s, __sk_common.skc_daddr);
+        }
+
+        return true;
+    }
+
+    return false;
 }
 
 static __always_inline bool likely_ephemeral_port(u16 port) {

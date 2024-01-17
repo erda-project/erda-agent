@@ -13,6 +13,13 @@ struct bpf_map_def SEC("maps/package_map") grpc_trace_map = {
 	.max_entries = 1024 * 10,
 };
 
+struct bpf_map_def SEC("maps/package_map") grpc_request_map = {
+  	.type = BPF_MAP_TYPE_HASH,
+	.key_size = sizeof(sock_key),
+	.value_size = sizeof(struct grpc_package_t),
+	.max_entries = 1024 * 10,
+};
+
 
 SEC("socket")
 int rpc__filter_package(struct __sk_buff *skb)
@@ -29,17 +36,63 @@ int rpc__filter_package(struct __sk_buff *skb)
     if (status != PAYLOAD_GRPC) {
         return 0;
     }
-    pkg.dstip = skb_tup.daddr_l;
-    pkg.dstport = bpf_ntohs(skb_tup.dport);
-    pkg.srcip = skb_tup.saddr_l;
-    pkg.srcport = bpf_ntohs(skb_tup.sport);
+    __u64 srcip = 0;
+    __u64 dstip = 0;
+    if (skb_tup.l3_proto == ETH_P_IP) {
+        pkg.srcIP = skb_tup.saddr_l;
+        pkg.dstIP = skb_tup.daddr_l;
+        srcip = skb_tup.saddr_l;
+        dstip = skb_tup.daddr_l;
+        pkg.ip_type = ETH_TYPE_IPV4;
+    } else if (skb_tup.l3_proto == ETH_P_IPV6) {
+        pkg.srcIP = skb_tup.saddr_h;
+        pkg.dstIP = skb_tup.daddr_h;
+        srcip = skb_tup.saddr_h;
+        dstip = skb_tup.daddr_h;
+        pkg.ip_type = ETH_TYPE_IPV6;
+    } else {
+        return 0;
+    }
+    if (status == PAYLOAD_GRPC) {
+        bpf_printk("scan grpc package, srcport: %d, dstport: %d, phase: %d\n", skb_tup.sport, skb_tup.dport, pkg.phase);
+    }
+    pkg.dstPort = bpf_ntohs(skb_tup.dport);
+    pkg.srcPort = bpf_ntohs(skb_tup.sport);
     pkg.seq = bpf_ntohs(skb_info.tcp_seq);
-    connection_pid_info_t *pid_info = get_pid_info(pkg.srcip, pkg.dstip, pkg.srcport, pkg.dstport);
+    connection_pid_info_t *pid_info = get_pid_info(srcip, dstip, pkg.srcPort, pkg.dstPort);
     if (pid_info) {
         pkg.pid = pid_info->pid;
-        bpf_printk("found associated pid info! pid: %d\n", pkg.pid);
     }
-    bpf_map_update_elem(&grpc_trace_map, &skb_info.tcp_seq, &pkg, BPF_ANY);
+    if (pkg.phase == P_REQUEST) {
+        sock_key req_conn = {0};
+        req_conn.srcIP = pkg.srcIP;
+        req_conn.dstIP = pkg.dstIP;
+        req_conn.srcPort = pkg.srcPort;
+        req_conn.dstPort = pkg.dstPort;
+        pkg.duration = bpf_ktime_get_ns();
+        bpf_map_update_elem(&grpc_request_map, &req_conn, &pkg, BPF_ANY);
+    } else if (pkg.phase == P_RESPONSE) {
+        sock_key req_conn = {0};
+        req_conn.srcIP = pkg.dstIP;
+        req_conn.dstIP = pkg.srcIP;
+        req_conn.srcPort = pkg.dstPort;
+        req_conn.dstPort = pkg.srcPort;
+
+        struct grpc_package_t *request_pkg = bpf_map_lookup_elem(&grpc_request_map, &req_conn);
+        if (request_pkg) {
+            pkg.duration = bpf_ktime_get_ns() - request_pkg->duration;
+//            pkg.duration = bpf_ntohs(pkg.duration);
+            pkg.path_len = request_pkg->path_len;
+            for (int i = 0; i < MAX_HTTP2_PATH_CONTENT_LENGTH; i++) {
+                pkg.path[i] = request_pkg->path[i];
+            }
+            bpf_map_delete_elem(&grpc_request_map, &req_conn);
+            bpf_printk("found request! duration: %d\n", pkg.duration);
+            bpf_map_update_elem(&grpc_trace_map, &skb_info.tcp_seq, &pkg, BPF_ANY);
+        }
+    } else {
+        return -1;
+    }
 
     return 0;
 }

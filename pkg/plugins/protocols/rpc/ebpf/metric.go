@@ -15,36 +15,44 @@ import (
 	"github.com/erda-project/ebpf-agent/metric"
 )
 
+const (
+	ETHERNET_TYPE_IPV4 = "ipv4"
+	ETHERNET_TYPE_IPV6 = "ipv6"
+)
+
 type MapPackage struct {
 	//HTTP, RPC, MySQL etc.
-	Phase    uint32
-	DstIP    string
-	DstPort  uint16
-	SrcIP    string
-	SrcPort  uint16
-	Seq      uint16
-	Duration uint32
-	Pid      uint32
-	PathLen  int
-	Path     string
-	Status   string
+	Phase        uint32
+	EthernetType string
+	DstIP        string
+	DstPort      uint16
+	SrcIP        string
+	SrcPort      uint16
+	Seq          uint16
+	Duration     uint32
+	Pid          uint32
+	PathLen      int
+	Path         string
+	Status       string
 }
 
 type Metric struct {
-	Phase       uint32
-	DstIP       string
-	DstPort     uint16
-	SrcIP       string
-	SrcPort     uint16
-	Seq         uint16
-	PodName     string
-	NodeName    string
-	NameSpace   string
-	ServiceName string
-	Pid         uint32
-	PathLen     int
-	Path        string
-	Status      string
+	Phase        uint32
+	EthernetType string
+	DstIP        string
+	DstPort      uint16
+	SrcIP        string
+	SrcPort      uint16
+	Seq          uint16
+	PodName      string
+	NodeName     string
+	NameSpace    string
+	ServiceName  string
+	Pid          uint32
+	Duration     uint32
+	PathLen      int
+	Path         string
+	Status       string
 }
 
 func (m *Metric) CovertMetric() metric.Metric {
@@ -69,22 +77,28 @@ func (m *Metric) String() string {
 func DecodeMapItem(e []byte) *MapPackage {
 	m := new(MapPackage)
 	m.Phase = uint32(e[0])
-	m.DstIP = net.IP(e[4:8]).String()
-	m.DstPort = binary.BigEndian.Uint16(e[8:12])
-	m.SrcIP = net.IP(e[12:16]).String()
-	m.SrcPort = binary.BigEndian.Uint16(e[16:20])
-	m.Seq = binary.BigEndian.Uint16(e[20:24])
-	m.Duration = binary.BigEndian.Uint32(e[24:28])
-	m.Pid = binary.LittleEndian.Uint32(e[28:32])
-	m.PathLen = int(e[32])
+	etherType := uint32(e[4])
+	if etherType == 0 {
+		m.EthernetType = ETHERNET_TYPE_IPV4
+	} else if etherType == 1 {
+		m.EthernetType = ETHERNET_TYPE_IPV6
+	}
+	m.DstIP = net.IP(e[8:12]).String()
+	m.DstPort = binary.BigEndian.Uint16(e[12:16])
+	m.SrcIP = net.IP(e[16:20]).String()
+	m.SrcPort = binary.BigEndian.Uint16(e[20:24])
+	m.Seq = binary.BigEndian.Uint16(e[24:28])
+	m.Duration = binary.LittleEndian.Uint32(e[28:32]) / 1000 / 1000
+	m.Pid = binary.LittleEndian.Uint32(e[32:36])
+	m.PathLen = int(e[36])
 	var err error
-	if m.PathLen > 0 && m.PathLen+33 < len(e) {
-		m.Path, err = encodeHeader(e[33 : m.PathLen+33+1])
+	if m.PathLen > 0 && m.PathLen+37 < len(e) {
+		m.Path, err = encodeHeader(e[37 : m.PathLen+37+1])
 		if err != nil {
 			klog.Errorf("encode path header error: %v", err)
 		}
 	}
-	m.Status, err = encodeHeader(e[83:])
+	m.Status, err = encodeHeader(e[87:])
 	if err != nil {
 		klog.Errorf("encode status header error: %v", err)
 	}

@@ -11,7 +11,6 @@ import (
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
-	"k8s.io/klog/v2"
 )
 
 const (
@@ -134,7 +133,6 @@ func (e *Ebpf) Load() error {
 			if err := m.Delete(key); err != nil {
 				panic(err)
 			}
-			klog.Infof("receive metric: %+v", metric)
 			e.Ch <- *metric
 		}
 		time.Sleep(1 * time.Second)
@@ -145,6 +143,7 @@ func (e *Ebpf) Load() error {
 func (e *Ebpf) Converet(p *MapPackage) *Metric {
 	m := new(Metric)
 	m.Phase = p.Phase
+	m.EthernetType = p.EthernetType
 	m.DstIP = p.DstIP
 	m.DstPort = p.DstPort
 	m.SrcIP = p.SrcIP
@@ -152,6 +151,7 @@ func (e *Ebpf) Converet(p *MapPackage) *Metric {
 	m.Seq = p.Seq
 	m.NodeName = e.NodeName
 	m.Pid = p.Pid
+	m.Duration = p.Duration
 	m.Path = p.Path
 	m.PathLen = p.PathLen
 	m.Status = p.Status
