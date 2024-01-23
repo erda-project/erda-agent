@@ -63,7 +63,7 @@ func (k *KprobeSysctlController) GetPodByUID(uid string) (corev1.Pod, error) {
 	for k := range k.podCache.Items() {
 		existedPods = append(existedPods, k)
 	}
-	klog.Infof("existed pods: %v", existedPods)
+	//klog.Infof("existed pods: %v", existedPods)
 	return corev1.Pod{}, fmt.Errorf("failed to find pod for uid: %s", uid)
 }
 
