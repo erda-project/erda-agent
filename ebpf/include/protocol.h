@@ -9,6 +9,7 @@
 #include <uapi/linux/udp.h>
 
 enum package_phase {
+    P_UNKNOWN = 0,
 	P_REQUEST = 1,
 	P_RESPONSE = 2,
 };
@@ -18,7 +19,7 @@ enum eth_ip_type {
     ETH_TYPE_IPV6 = 1,
 };
 
-#define MAX_HTTP2_PATH_CONTENT_LENGTH 50
+#define MAX_HTTP2_PATH_CONTENT_LENGTH 100
 #define MAX_HTTP2_STATUS_HEADER_LENGTH 1
 
 struct grpc_package_t {
@@ -201,6 +202,7 @@ static __always_inline void get_path(const struct __sk_buff *skb, skb_info_t *sk
     pkg->path_len = len.length+sizeof(idx->raw);
 
     bpf_skb_load_bytes(skb, skb_info->data_off-sizeof(idx->raw), pkg->path, MAX_HTTP2_PATH_CONTENT_LENGTH);
+    pkg->phase = P_REQUEST;
 
     return;
 }
@@ -219,6 +221,7 @@ static __always_inline void get_status(const struct __sk_buff *skb, skb_info_t *
     bpf_skb_load_bytes(skb, skb_info->data_off, &len, sizeof(len));
 
     bpf_skb_load_bytes(skb, skb_info->data_off-sizeof(idx->raw), pkg->status, MAX_HTTP2_STATUS_HEADER_LENGTH);
+    pkg->phase = P_RESPONSE;
 
     return;
 }
@@ -393,12 +396,10 @@ static __always_inline grpc_status_t scan_headers(const struct __sk_buff *skb, s
         bpf_skb_load_bytes(skb, skb_info->data_off, &idx.raw, sizeof(idx.raw));
         skb_info->data_off += sizeof(idx.raw);
         if (idx.literal.index == HTTP2_PATH_HEADER_IDX) {
-            pkg->phase = P_REQUEST;
             get_path(skb, skb_info, frame_end, &idx, pkg);
         }
         if (idx.literal.index == HTTP2_STATUS_HEADER_IDX) {
             get_status(skb, skb_info, frame_end, &idx, pkg);
-            pkg->phase = P_RESPONSE;
         }
 
         if (is_literal(idx.raw)) {
@@ -483,6 +484,9 @@ static __always_inline grpc_status_t judge_grpc(const struct __sk_buff *skb, con
         info.data_off = frames[i].offset;
 
         status = scan_headers(skb, &info, frames[i].length, pkg);
+    }
+    if (status == PAYLOAD_UNDETERMINED && pkg->phase != P_UNKNOWN) {
+        status = PAYLOAD_GRPC;
     }
 
     return status;

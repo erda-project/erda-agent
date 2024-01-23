@@ -27,7 +27,7 @@ int rpc__filter_package(struct __sk_buff *skb)
     skb_info_t skb_info = {0};
     conn_tuple_t skb_tup = {0};
     struct grpc_package_t pkg = {0};
-    pkg.phase = 0;
+    pkg.phase = P_UNKNOWN;
     if (!read_conn_tuple_skb(skb, &skb_info, &skb_tup)) {
         return 0;
     }
@@ -81,7 +81,6 @@ int rpc__filter_package(struct __sk_buff *skb)
         struct grpc_package_t *request_pkg = bpf_map_lookup_elem(&grpc_request_map, &req_conn);
         if (request_pkg) {
             pkg.duration = bpf_ktime_get_ns() - request_pkg->duration;
-//            pkg.duration = bpf_ntohs(pkg.duration);
             pkg.path_len = request_pkg->path_len;
             for (int i = 0; i < MAX_HTTP2_PATH_CONTENT_LENGTH; i++) {
                 pkg.path[i] = request_pkg->path[i];
