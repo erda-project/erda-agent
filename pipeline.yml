@@ -1,0 +1,32 @@
+version: "1.1"
+
+stages:
+  - stage:
+      - git-checkout:
+          alias: raw-ebpf-agent
+          params:
+            depth: 1
+  - stage:
+      - extract-repo-version:
+          params:
+            git_dir: ${{ dirs.raw-ebpf-agent }}
+  - stage:
+      - custom-script:
+          alias: build
+          commands:
+            - cd ${{ dirs.raw-ebpf-agent }}
+            - make build-ebpf-agent
+            - make login
+            - make buildkit-image
+          resources:
+            cpu: 0.5
+            mem: 2048
+  - stage:
+      - release:
+          alias: release-ebpf-agent
+          params:
+            check_diceyml: false
+            dice_yml: ${{ dirs.raw-ebpf-agent }}/erda.yml
+            tag_version: ${{ outputs.extract-repo-version.version }}
+            image:
+              ebpf-agent: ${{ outputs.build.image }}

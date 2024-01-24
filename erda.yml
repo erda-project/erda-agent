@@ -1,0 +1,45 @@
+version: "2.0"
+meta:
+  ERDA_COMPONENT: ""
+
+envs: {}
+services:
+  ebpf-agent:
+    image: ebpf-agent
+    envs:
+      IN_CLUSTER: "true"
+      UPGRADE_1_4_0: 0
+      COLLECTOR_AUTH_PASSWORD: G$9767bP32drYFPWrK4XMLRMTatiM6cU
+      COLLECTOR_AUTH_USERNAME: collector
+    resources:
+      cpu: 0.2
+      mem: 300
+      max_cpu: 1
+      max_mem: 1024
+      network:
+        mode: container
+    binds:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /run/containerd:/run/containerd:ro
+    k8s_snippet:
+      container:
+        securityContext:
+          privileged: true
+        env:
+        - name: NODE_NAME
+          valueFrom:
+            fieldRef:
+              apiVersion: v1
+              fieldPath: spec.nodeName
+    deployments:
+      replicas: 1
+      workload: per_node
+      labels:
+        GROUP: ebpf-agent
+
+addons:
+  infos:
+    plan: "custom:basic"
+    options:
+      version: "1.0.0"
