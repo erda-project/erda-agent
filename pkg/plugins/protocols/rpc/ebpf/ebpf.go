@@ -1,7 +1,6 @@
 package ebpf
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io/ioutil"
@@ -47,13 +46,7 @@ func NewEbpf(ifindex int, ch chan Metric) *Ebpf {
 	}
 }
 
-func (e *Ebpf) Load() error {
-	eBPFprogram := GetEBPFProg()
-
-	spec, err := ebpf.LoadCollectionSpecFromReader(bytes.NewReader(eBPFprogram))
-	if err != nil {
-		return err
-	}
+func (e *Ebpf) Load(spec *ebpf.CollectionSpec) error {
 	coll, err := ebpf.NewCollectionWithOptions(spec, ebpf.CollectionOptions{})
 	if err != nil {
 		return err

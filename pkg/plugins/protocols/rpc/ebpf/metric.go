@@ -4,7 +4,6 @@ import (
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
-	"github.com/chrismoos/hpack"
 	"k8s.io/klog"
 	"net"
 	"strconv"
@@ -13,6 +12,7 @@ import (
 	"unsafe"
 
 	"github.com/erda-project/ebpf-agent/metric"
+	"github.com/erda-project/ebpf-agent/pkg/hpack"
 )
 
 const (
@@ -92,13 +92,14 @@ func DecodeMapItem(e []byte) *MapPackage {
 	m.Pid = binary.LittleEndian.Uint32(e[32:36])
 	m.PathLen = int(e[36])
 	var err error
-	if m.PathLen > 0 && m.PathLen+37 < len(e) {
+	if m.PathLen > 0 && m.PathLen < 100 && m.PathLen+37 < len(e) {
 		m.Path, err = encodeHeader(e[37 : m.PathLen+37+1])
 		if err != nil {
 			klog.Errorf("encode path header error: %v", err)
+			m.Path = string(e[37 : m.PathLen+37+1])
 		}
 	}
-	m.Status, err = encodeHeader(e[87:])
+	m.Status, err = encodeHeader(e[137:])
 	if err != nil {
 		klog.Errorf("encode status header error: %v", err)
 	}

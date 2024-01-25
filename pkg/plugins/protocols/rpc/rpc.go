@@ -1,19 +1,22 @@
 package rpc
 
 import (
+	"bytes"
+	"log"
 	"strings"
 
 	"github.com/vishvananda/netlink"
 	"k8s.io/klog"
 
+	"github.com/cilium/ebpf"
 	"github.com/erda-project/ebpf-agent/metric"
 	"github.com/erda-project/ebpf-agent/pkg/plugins/kprobe"
-	"github.com/erda-project/ebpf-agent/pkg/plugins/protocols/rpc/ebpf"
+	rpcebpf "github.com/erda-project/ebpf-agent/pkg/plugins/protocols/rpc/ebpf"
 	"github.com/erda-project/erda-infra/base/servicehub"
 )
 
 type provider struct {
-	ch           chan ebpf.Metric
+	ch           chan rpcebpf.Metric
 	kprobeHelper kprobe.Interface
 }
 
@@ -23,8 +26,14 @@ func (p *provider) Init(ctx servicehub.Context) error {
 }
 
 func (p *provider) Gather(c chan metric.Metric) {
-	p.ch = make(chan ebpf.Metric, 100)
+	p.ch = make(chan rpcebpf.Metric, 100)
 	links, err := netlink.LinkList()
+	if err != nil {
+		panic(err)
+	}
+	eBPFprogram := rpcebpf.GetEBPFProg()
+
+	spec, err := ebpf.LoadCollectionSpecFromReader(bytes.NewReader(eBPFprogram))
 	if err != nil {
 		panic(err)
 	}
@@ -34,8 +43,10 @@ func (p *provider) Gather(c chan metric.Metric) {
 			continue
 		}
 		go func(l netlink.Link) {
-			proj := ebpf.NewEbpf(l.Attrs().Index, p.ch)
-			proj.Load()
+			proj := rpcebpf.NewEbpf(l.Attrs().Index, p.ch)
+			if err := proj.Load(spec); err != nil {
+				log.Fatalf("failed to load ebpf, err: %v", err)
+			}
 		}(link)
 	}
 	for {
@@ -47,7 +58,7 @@ func (p *provider) Gather(c chan metric.Metric) {
 	}
 }
 
-func (p *provider) fillMetric(m *ebpf.Metric) {
+func (p *provider) fillMetric(m *rpcebpf.Metric) {
 	stat, err := p.kprobeHelper.GetSysctlStat(m.Pid)
 	if err != nil {
 		return
