@@ -9,14 +9,14 @@
 struct bpf_map_def SEC("maps/package_map") grpc_trace_map = {
   	.type = BPF_MAP_TYPE_HASH,
 	.key_size = sizeof(__u32),
-	.value_size = sizeof(struct grpc_package_t),
+	.value_size = sizeof(struct rpc_package_t),
 	.max_entries = 1024 * 10,
 };
 
 struct bpf_map_def SEC("maps/package_map") grpc_request_map = {
   	.type = BPF_MAP_TYPE_HASH,
 	.key_size = sizeof(sock_key),
-	.value_size = sizeof(struct grpc_package_t),
+	.value_size = sizeof(struct rpc_package_t),
 	.max_entries = 1024 * 10,
 };
 
@@ -26,16 +26,25 @@ int rpc__filter_package(struct __sk_buff *skb)
 {
     skb_info_t skb_info = {0};
     conn_tuple_t skb_tup = {0};
-    struct grpc_package_t pkg = {0};
+    struct rpc_package_t pkg = {0};
     pkg.phase = P_UNKNOWN;
     if (!read_conn_tuple_skb(skb, &skb_info, &skb_tup)) {
         return 0;
     }
-
-    grpc_status_t status = judge_grpc(skb, &skb_info, &pkg);
-    if (status != PAYLOAD_GRPC) {
-        return 0;
+    if (is_dubbo_magic(skb, &skb_info)) {
+        dubbo_event_t event = judge_dubbo_protocol(skb, &skb_info, &pkg);
+        if (event == IS_DUBBO_EVENT) {
+            return 0;
+        }
+        pkg.rpc_type = PAYLOAD_DUBBO;
+    } else {
+        rpc_status_t status = judge_rpc(skb, &skb_info, &pkg);
+        if (status != PAYLOAD_GRPC) {
+            return 0;
+        }
+        pkg.rpc_type = PAYLOAD_GRPC;
     }
+
     __u64 srcip = 0;
     __u64 dstip = 0;
     if (skb_tup.l3_proto == ETH_P_IP) {
@@ -53,9 +62,9 @@ int rpc__filter_package(struct __sk_buff *skb)
     } else {
         return 0;
     }
-    if (status == PAYLOAD_GRPC) {
-        bpf_printk("scan grpc package, srcport: %d, dstport: %d, phase: %d\n", skb_tup.sport, skb_tup.dport, pkg.phase);
-    }
+//    if (status == PAYLOAD_GRPC) {
+//        bpf_printk("scan grpc package, srcport: %d, dstport: %d, phase: %d\n", skb_tup.sport, skb_tup.dport, pkg.phase);
+//    }
     pkg.dstPort = bpf_ntohs(skb_tup.dport);
     pkg.srcPort = bpf_ntohs(skb_tup.sport);
     pkg.seq = bpf_ntohs(skb_info.tcp_seq);
@@ -78,7 +87,7 @@ int rpc__filter_package(struct __sk_buff *skb)
         req_conn.srcPort = pkg.dstPort;
         req_conn.dstPort = pkg.srcPort;
 
-        struct grpc_package_t *request_pkg = bpf_map_lookup_elem(&grpc_request_map, &req_conn);
+        struct rpc_package_t *request_pkg = bpf_map_lookup_elem(&grpc_request_map, &req_conn);
         if (request_pkg) {
             pkg.duration = bpf_ktime_get_ns() - request_pkg->duration;
             pkg.path_len = request_pkg->path_len;
@@ -86,7 +95,7 @@ int rpc__filter_package(struct __sk_buff *skb)
                 pkg.path[i] = request_pkg->path[i];
             }
             bpf_map_delete_elem(&grpc_request_map, &req_conn);
-            bpf_printk("found request! duration: %d\n", pkg.duration);
+//            bpf_printk("found request! duration: %d\n", pkg.duration);
             bpf_map_update_elem(&grpc_trace_map, &skb_info.tcp_seq, &pkg, BPF_ANY);
         }
     } else {

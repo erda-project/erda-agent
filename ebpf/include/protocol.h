@@ -14,6 +14,23 @@ enum package_phase {
 	P_RESPONSE = 2,
 };
 
+typedef enum {
+    PAYLOAD_UNDETERMINED,
+    PAYLOAD_GRPC,
+    PAYLOAD_NOT_GRPC,
+    PAYLOAD_DUBBO,
+} rpc_status_t;
+
+enum dubbo_phase {
+    D_REQUEST = 1,
+    D_RESPONSE = 0,
+};
+
+typedef enum {
+    NOT_DUBBO_EVENT = 0,
+    IS_DUBBO_EVENT = 1, // Identifies whether it is an event message, for example, a heartbeat event. Set to 1 if this is an event.
+} dubbo_event_t;
+
 enum eth_ip_type {
     ETH_TYPE_IPV4 = 0,
     ETH_TYPE_IPV6 = 1,
@@ -22,7 +39,8 @@ enum eth_ip_type {
 #define MAX_HTTP2_PATH_CONTENT_LENGTH 100
 #define MAX_HTTP2_STATUS_HEADER_LENGTH 1
 
-struct grpc_package_t {
+struct rpc_package_t {
+    __u32 rpc_type;
 	__u32 phase;
 	__u32 ip_type;
 	__u32 dstIP;
@@ -36,6 +54,7 @@ struct grpc_package_t {
 	__u8 path_len;
 	char path[MAX_HTTP2_PATH_CONTENT_LENGTH];
 	char status[MAX_HTTP2_STATUS_HEADER_LENGTH];
+	__u8 dubbo_status;
 };
 
 #define IP_MF	  0x2000
@@ -52,6 +71,12 @@ struct grpc_package_t {
 
 #define GRPC_ENCODED_CONTENT_TYPE "\x1d\x75\xd0\x62\x0d\x26\x3d\x4c\x4d\x65\x64"
 #define GRPC_CONTENT_TYPE_LEN (sizeof(GRPC_ENCODED_CONTENT_TYPE) - 1)
+
+#define DUBBO_MAGIC "\xda\xbb"
+#define DUBBO_MAGIC_LEN 2
+
+#define DUBBO_REQUEST_DATA_LEN 60
+#define DUBBO_RESPONSE_DATA_LEN 20
 
 #define TCP_FLAGS_OFFSET 13
 
@@ -95,12 +120,6 @@ struct http2_frame {
     __u8 reserved : 1;
     __u32 stream_id : 31;
 } __attribute__ ((packed));
-
-typedef enum {
-    PAYLOAD_UNDETERMINED,
-    PAYLOAD_GRPC,
-    PAYLOAD_NOT_GRPC,
-} grpc_status_t;
 
 typedef union {
     struct {
@@ -187,7 +206,15 @@ static __always_inline bool is_encoded_grpc_content_type(const char *content_typ
     return !bpf_memcmp(content_type_buf, GRPC_ENCODED_CONTENT_TYPE, GRPC_CONTENT_TYPE_LEN);
 }
 
-static __always_inline void get_path(const struct __sk_buff *skb, skb_info_t *skb_info, __u32 frame_end, field_index *idx, struct grpc_package_t *pkg) {
+static __always_inline bool is_dubbo_magic(const struct __sk_buff *skb, const skb_info_t *skb_info) {
+    char dubbo_magic_buf[DUBBO_MAGIC_LEN];
+    if (bpf_skb_load_bytes(skb, skb_info->data_off, dubbo_magic_buf, DUBBO_MAGIC_LEN) < 0) {
+        return 0;
+    }
+    return !bpf_memcmp(dubbo_magic_buf, DUBBO_MAGIC, DUBBO_MAGIC_LEN);
+}
+
+static __always_inline void get_path(const struct __sk_buff *skb, skb_info_t *skb_info, __u32 frame_end, field_index *idx, struct rpc_package_t *pkg) {
     // We only care about indexed names
     if (idx->literal.index != HTTP2_PATH_HEADER_IDX) {
         return;
@@ -207,7 +234,7 @@ static __always_inline void get_path(const struct __sk_buff *skb, skb_info_t *sk
     return;
 }
 
-static __always_inline void get_status(const struct __sk_buff *skb, skb_info_t *skb_info, __u32 frame_end, field_index *idx, struct grpc_package_t *pkg) {
+static __always_inline void get_status(const struct __sk_buff *skb, skb_info_t *skb_info, __u32 frame_end, field_index *idx, struct rpc_package_t *pkg) {
     // We only care about indexed names
     if (idx->literal.index != HTTP2_STATUS_HEADER_IDX) {
         return;
@@ -351,7 +378,7 @@ static __always_inline bool read_http2_frame_header(const char *buf, size_t buf_
     return out->type <= kContinuationFrame;
 }
 
-static __always_inline grpc_status_t is_content_type_grpc(const struct __sk_buff *skb, skb_info_t *skb_info, __u32 frame_end, __u8 idx) {
+static __always_inline rpc_status_t is_content_type_grpc(const struct __sk_buff *skb, skb_info_t *skb_info, __u32 frame_end, __u8 idx) {
     // We only care about indexed names
     if (idx != HTTP2_CONTENT_TYPE_IDX) {
         return PAYLOAD_UNDETERMINED;
@@ -379,9 +406,9 @@ static __always_inline grpc_status_t is_content_type_grpc(const struct __sk_buff
     return is_encoded_grpc_content_type(content_type_buf) ? PAYLOAD_GRPC : PAYLOAD_NOT_GRPC;
 }
 
-static __always_inline grpc_status_t scan_headers(const struct __sk_buff *skb, skb_info_t *skb_info, __u32 frame_length, struct grpc_package_t *pkg) {
+static __always_inline rpc_status_t scan_headers(const struct __sk_buff *skb, skb_info_t *skb_info, __u32 frame_length, struct rpc_package_t *pkg) {
     field_index idx;
-    grpc_status_t status = PAYLOAD_UNDETERMINED;
+    rpc_status_t status = PAYLOAD_UNDETERMINED;
 
     __u32 frame_end = skb_info->data_off + frame_length;
     // Check that frame_end does not go beyond the skb
@@ -433,8 +460,8 @@ static __always_inline grpc_status_t scan_headers(const struct __sk_buff *skb, s
     return status;
 }
 
-static __always_inline grpc_status_t judge_grpc(const struct __sk_buff *skb, const skb_info_t *skb_info, struct grpc_package_t *pkg) {
-    grpc_status_t status = PAYLOAD_UNDETERMINED;
+static __always_inline rpc_status_t judge_rpc(const struct __sk_buff *skb, const skb_info_t *skb_info, struct rpc_package_t *pkg) {
+    rpc_status_t status = PAYLOAD_UNDETERMINED;
     char frame_buf[HTTP2_FRAME_HEADER_SIZE];
     struct http2_frame current_frame;
 
@@ -490,4 +517,62 @@ static __always_inline grpc_status_t judge_grpc(const struct __sk_buff *skb, con
     }
 
     return status;
+}
+
+static __always_inline dubbo_event_t judge_dubbo_protocol(const struct __sk_buff *skb, const skb_info_t *skb_info, struct rpc_package_t *pkg) {
+    skb_info_t info = *skb_info;
+    dubbo_event_t event = NOT_DUBBO_EVENT;
+    info.data_off += DUBBO_MAGIC_LEN;
+    __u8 req_res;
+    if (bpf_skb_load_bytes(skb, info.data_off, &req_res, 1) < 0) {
+        return IS_DUBBO_EVENT;
+    }
+    info.data_off += 1;
+    pkg->phase = req_res >> 7;
+    if (pkg->phase == D_REQUEST) {
+        pkg->phase = P_REQUEST;
+    } else if (pkg->phase == D_RESPONSE) {
+        pkg->phase = P_RESPONSE;
+    }
+
+    event = req_res >> 5;
+    if (event == IS_DUBBO_EVENT) {
+        return event;
+    }
+
+    if (pkg->phase == P_RESPONSE) {
+        __u8 stauts;
+        if (bpf_skb_load_bytes(skb, info.data_off, &stauts, 1) < 0) {
+            return IS_DUBBO_EVENT;
+        }
+        pkg->dubbo_status = stauts;
+//        bpf_printk("dubbo status: %d\n", stauts);
+    }
+    // offset status
+    info.data_off += 1;
+    // offset request id
+    info.data_off += 8;
+    // offset data len
+    info.data_off += 4;
+    if (pkg->phase == P_REQUEST) {
+        char req_data[DUBBO_REQUEST_DATA_LEN];
+        if (bpf_skb_load_bytes(skb, info.data_off, req_data, DUBBO_REQUEST_DATA_LEN) < 0) {
+            return IS_DUBBO_EVENT;
+        }
+        for (int i = 0; i < DUBBO_REQUEST_DATA_LEN; i++) {
+            pkg->path[i] = req_data[i];
+        }
+        info.data_off += DUBBO_REQUEST_DATA_LEN;
+//        bpf_printk("dubbo request data: %s\n", req_data);
+    }
+    // TODO: response data payload
+//    else if (pkg->phase == P_RESPONSE) {
+//        char res_data[DUBBO_RESPONSE_DATA_LEN];
+//        if (bpf_skb_load_bytes(skb, info.data_off+1, res_data, DUBBO_RESPONSE_DATA_LEN) < 0) {
+//            return IS_DUBBO_EVENT;
+//        }
+//        info.data_off += DUBBO_RESPONSE_DATA_LEN+1;
+//        bpf_printk("dubbo response data: %s\n", res_data);
+//    }
+    return NOT_DUBBO_EVENT;
 }
