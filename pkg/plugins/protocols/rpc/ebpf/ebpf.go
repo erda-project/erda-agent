@@ -135,6 +135,11 @@ func (e *Ebpf) Load(spec *ebpf.CollectionSpec) error {
 
 func (e *Ebpf) Converet(p *MapPackage) *Metric {
 	m := new(Metric)
+	if p.RpcType == 1 {
+		m.RpcType = RPC_TYPE_GRPC
+	} else if p.RpcType == 3 {
+		m.RpcType = RPC_TYPE_DUBBO
+	}
 	m.Phase = p.Phase
 	m.EthernetType = p.EthernetType
 	m.DstIP = p.DstIP

@@ -20,8 +20,16 @@ const (
 	ETHERNET_TYPE_IPV6 = "ipv6"
 )
 
+const (
+	// RPC_TYPE_DUBBO dubbo
+	RPC_TYPE_DUBBO = "DUBBO"
+	// RPC_TYPE_GRPC grpc
+	RPC_TYPE_GRPC = "GRPC"
+)
+
 type MapPackage struct {
-	//HTTP, RPC, MySQL etc.
+	//DUBBO, GRPC etc.
+	RpcType      uint32
 	Phase        uint32
 	EthernetType string
 	DstIP        string
@@ -37,6 +45,7 @@ type MapPackage struct {
 }
 
 type Metric struct {
+	RpcType      string
 	Phase        uint32
 	EthernetType string
 	DstIP        string
@@ -76,32 +85,41 @@ func (m *Metric) String() string {
 
 func DecodeMapItem(e []byte) *MapPackage {
 	m := new(MapPackage)
-	m.Phase = uint32(e[0])
-	etherType := uint32(e[4])
+	m.RpcType = uint32(e[0])
+	m.Phase = uint32(e[4])
+	etherType := uint32(e[8])
 	if etherType == 0 {
 		m.EthernetType = ETHERNET_TYPE_IPV4
 	} else if etherType == 1 {
 		m.EthernetType = ETHERNET_TYPE_IPV6
 	}
-	m.DstIP = net.IP(e[8:12]).String()
-	m.DstPort = binary.BigEndian.Uint16(e[12:16])
-	m.SrcIP = net.IP(e[16:20]).String()
-	m.SrcPort = binary.BigEndian.Uint16(e[20:24])
-	m.Seq = binary.BigEndian.Uint16(e[24:28])
-	m.Duration = binary.LittleEndian.Uint32(e[28:32]) / 1000 / 1000
-	m.Pid = binary.LittleEndian.Uint32(e[32:36])
-	m.PathLen = int(e[36])
+	m.DstIP = net.IP(e[12:16]).String()
+	m.DstPort = binary.BigEndian.Uint16(e[16:20])
+	m.SrcIP = net.IP(e[20:24]).String()
+	m.SrcPort = binary.BigEndian.Uint16(e[24:28])
+	m.Seq = binary.BigEndian.Uint16(e[28:32])
+	m.Duration = binary.LittleEndian.Uint32(e[32:36]) / 1000 / 1000
+	m.Pid = binary.LittleEndian.Uint32(e[36:40])
+	m.PathLen = int(e[40])
 	var err error
-	if m.PathLen > 0 && m.PathLen < 100 && m.PathLen+37 < len(e) {
-		m.Path, err = encodeHeader(e[37 : m.PathLen+37+1])
+	if m.RpcType == 1 && m.PathLen > 0 && m.PathLen < 100 && m.PathLen+41 < len(e) {
+		m.Path, err = encodeHeader(e[41 : m.PathLen+41+1])
 		if err != nil {
 			klog.Errorf("encode path header error: %v", err)
-			m.Path = string(e[37 : m.PathLen+37+1])
+			m.Path = string(e[41 : m.PathLen+41+1])
 		}
 	}
-	m.Status, err = encodeHeader(e[137:])
+	// dubbo path
+	if m.RpcType == 3 {
+		m.Path = string(e[41:101])
+	}
+	m.Status, err = encodeHeader(e[141:142])
 	if err != nil {
 		klog.Errorf("encode status header error: %v", err)
+	}
+	// dubbo status
+	if m.RpcType == 3 {
+		m.Status = strconv.Itoa(int(e[142]))
 	}
 	return m
 }
