@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"k8s.io/klog"
 	"log"
 	"syscall"
 	"time"
@@ -39,14 +40,16 @@ const (
 	ProtocolICMP  = 1                        // Internet Control Message
 )
 
-func NewEbpf(ifindex int, ch chan Metric) *Ebpf {
+func NewEbpf(ifindex int, ip string, ch chan Metric) *Ebpf {
 	return &Ebpf{
-		IfIndex: ifindex,
-		Ch:      ch,
+		IfIndex:   ifindex,
+		Ch:        ch,
+		IPaddress: ip,
 	}
 }
 
 func (e *Ebpf) Load(spec *ebpf.CollectionSpec) error {
+	klog.Infof("ip: %s, index: %d start rpc", e.IPaddress, e.IfIndex)
 	coll, err := ebpf.NewCollectionWithOptions(spec, ebpf.CollectionOptions{})
 	if err != nil {
 		return err
@@ -112,6 +115,11 @@ func (e *Ebpf) Load(spec *ebpf.CollectionSpec) error {
 	}
 
 	if err := syscall.SetsockoptInt(sock, syscall.SOL_SOCKET, SO_ATTACH_BPF, prog.FD()); err != nil {
+		return err
+	}
+	const keyIPAddr uint32 = 1
+	// inject target ip address, if request srcip no equal target ip, will drop
+	if err := coll.DetachMap("filter_map").Put(keyIPAddr, uint64(Htonl(IP4toDec(e.IPaddress)))); err != nil {
 		return err
 	}
 	m := coll.DetachMap("grpc_trace_map")

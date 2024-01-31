@@ -15,6 +15,8 @@ import (
 	"github.com/erda-project/ebpf-agent/pkg/hpack"
 )
 
+type RpcType string
+
 const (
 	ETHERNET_TYPE_IPV4 = "ipv4"
 	ETHERNET_TYPE_IPV6 = "ipv6"
@@ -22,9 +24,9 @@ const (
 
 const (
 	// RPC_TYPE_DUBBO dubbo
-	RPC_TYPE_DUBBO = "DUBBO"
+	RPC_TYPE_DUBBO RpcType = "DUBBO"
 	// RPC_TYPE_GRPC grpc
-	RPC_TYPE_GRPC = "GRPC"
+	RPC_TYPE_GRPC RpcType = "GRPC"
 )
 
 type MapPackage struct {
@@ -45,7 +47,7 @@ type MapPackage struct {
 }
 
 type Metric struct {
-	RpcType      string
+	RpcType      RpcType
 	Phase        uint32
 	EthernetType string
 	DstIP        string
@@ -111,7 +113,20 @@ func DecodeMapItem(e []byte) *MapPackage {
 	}
 	// dubbo path
 	if m.RpcType == 3 {
-		m.Path = string(e[41:101])
+		//m.Path = string(e[41:121])
+		tmp := e[41:121]
+		j := 0
+		for i := 0; i < len(tmp); i++ {
+			if tmp[i] == 0x05 {
+				m.Path += string(tmp[j:i])
+				j = i + 1
+			}
+			if j != 0 && tmp[i] == 0x00 {
+				m.Path += string(tmp[j:i])
+				break
+				j = i + 1
+			}
+		}
 	}
 	m.Status, err = encodeHeader(e[141:142])
 	if err != nil {
