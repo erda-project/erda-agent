@@ -107,9 +107,7 @@ func (c *Controller) convertOomEvent2Metric(event *oomprocesser2.OOMEvent, pod v
 	metric.Name = "docker_container_summary"
 	metric.Timestamp = time.Now().UnixNano()
 	metric.OrgName = pod.Labels["DICE_ORG_NAME"]
-	if len(pod.Status.ContainerStatuses) > 0 {
-		metric.AddTags("name", strings.TrimLeft(pod.Status.ContainerStatuses[0].ContainerID, "containerd://"))
-	}
+	metric.AddTags("name", strings.TrimLeft(pod.Status.ContainerStatuses[0].ContainerID, "containerd://"))
 	metric.AddTags("namespace", pod.Namespace)
 	metric.AddTags("pod", pod.Name)
 	metric.AddTags("container", pod.Spec.Containers[0].Name)

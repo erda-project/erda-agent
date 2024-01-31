@@ -59,6 +59,11 @@ func (k *KprobeSysctlController) GetPodByUID(uid string) (corev1.Pod, error) {
 	if pod, ok := k.podCache.Get(uid); ok {
 		return pod.(corev1.Pod), nil
 	}
+	existedPods := make([]string, 0)
+	for k := range k.podCache.Items() {
+		existedPods = append(existedPods, k)
+	}
+	//klog.Infof("existed pods: %v", existedPods)
 	return corev1.Pod{}, fmt.Errorf("failed to find pod for uid: %s", uid)
 }
 
@@ -76,13 +81,10 @@ func (k *KprobeSysctlController) Start(ch chan<- *SysctlStat) error {
 		AddFunc: func(obj interface{}) {
 			newPod := obj.(*corev1.Pod)
 			k.podCache.Set(string(newPod.UID), *newPod, 30*time.Minute)
-			k.podCache.Set(newPod.Status.PodIP, *newPod, 30*time.Minute)
 		},
-		DeleteFunc: func(obj interface{}) {
-			pod := obj.(*corev1.Pod)
-			k.podCache.Delete(string(pod.UID))
-			k.podCache.Delete(pod.Status.PodIP)
-		},
+		// DeleteFunc: func(obj interface{}) {
+
+		// },
 		// UpdateFunc: func(oldObj interface{}, newObj interface{}) {
 		// },
 	})

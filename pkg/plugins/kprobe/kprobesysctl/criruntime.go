@@ -156,7 +156,6 @@ func (k *KprobeSysctlController) refreshPodInfo() error {
 
 	for i := range pods.Items {
 		k.podCache.Set(string(pods.Items[i].UID), pods.Items[i], 30*time.Minute)
-		k.podCache.Set(pods.Items[i].Status.PodIP, pods.Items[i], 30*time.Minute)
 	}
 	return nil
 }

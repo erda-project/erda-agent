@@ -75,7 +75,7 @@ struct rpc_package_t {
 #define DUBBO_MAGIC "\xda\xbb"
 #define DUBBO_MAGIC_LEN 2
 
-#define DUBBO_REQUEST_DATA_LEN 80
+#define DUBBO_REQUEST_DATA_LEN 60
 #define DUBBO_RESPONSE_DATA_LEN 20
 
 #define TCP_FLAGS_OFFSET 13

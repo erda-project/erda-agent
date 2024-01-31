@@ -63,7 +63,7 @@ func (p *provider) Run(ctx context.Context) error {
 			klog.Infof("[%d] metric is waiting to write", len(ch))
 			klog.Infof(m.String())
 			// TODO： push other metrics to collector
-			if m.Name == "docker_container_summary" || m.Name == "application_rpc" {
+			if m.Name == "docker_container_summary" {
 				if err := p.collectorClient.Send([]*metric.Metric{&m}); err != nil {
 					klog.Errorf("send metric to collector error: %v", err)
 					continue

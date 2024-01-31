@@ -1028,7 +1028,7 @@ func decodeInteger(buf []byte, prefixLength int, integerMax int, encodedLengthMa
 		m := 0
 		for {
 			if idx == len(buf) {
-				return nil, 0, 0, fmt.Errorf("ran out of data while reading HPACK integer")
+				panic("ran out of data while reading HPACK integer")
 			}
 			n += (int(buf[idx]) & 127) * int(math.Pow(2, float64(m)))
 			if buf[idx]&(1<<7) == 0 {
