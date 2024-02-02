@@ -26,6 +26,22 @@ type Ebpf struct {
 	//hostnetwork类型的pod,使用pod来区分k8s的元数据
 	PortMap map[int32]K8SMeta
 	Ch      chan Metric
+
+	// ebpf collection
+	collection *ebpf.Collection
+
+	// ebpf program
+	socketProg              *ebpf.Program
+	tcpSendMsgProg          *ebpf.Program
+	kprobeTcpRecvMsgProg    *ebpf.Program
+	kretprobeTcpRecvMsgProg *ebpf.Program
+	kprobeTcpCloseProg      *ebpf.Program
+
+	// ebpf link
+	tcpSendMsgKP          link.Link
+	kprobeTcpRecvMsgKP    link.Link
+	kretprobeTcpRecvMsgKP link.Link
+	kprobeTcpCloseKP      link.Link
 }
 
 type K8SMeta struct {
@@ -50,64 +66,60 @@ func NewEbpf(ifindex int, ip string, ch chan Metric) *Ebpf {
 
 func (e *Ebpf) Load(spec *ebpf.CollectionSpec) error {
 	klog.Infof("ip: %s, index: %d start rpc", e.IPaddress, e.IfIndex)
-	coll, err := ebpf.NewCollectionWithOptions(spec, ebpf.CollectionOptions{})
+	var err error
+	e.collection, err = ebpf.NewCollectionWithOptions(spec, ebpf.CollectionOptions{})
 	if err != nil {
 		return err
 	}
-	defer coll.Close()
-	prog := coll.DetachProgram("rpc__filter_package")
+	prog := e.collection.DetachProgram("rpc__filter_package")
 	if prog == nil {
 		msg := fmt.Sprintf("Error: no program named %s found !", "rpc__filter_package")
 		return errors.New(msg)
 	}
 
-	tcpSendMsgProg := coll.DetachProgram("kprobe_tcp_sendmsg")
-	if tcpSendMsgProg == nil {
+	e.tcpSendMsgProg = e.collection.DetachProgram("kprobe_tcp_sendmsg")
+	if e.tcpSendMsgProg == nil {
 		msg := fmt.Sprintf("Error: no program named %s found !", "kprobe_tcp_sendmsg")
-		log.Fatal(errors.New(msg))
+		return errors.New(msg)
 	}
 
-	kprobeTcpRecvMsgProg := coll.DetachProgram("kprobe_tcp_recvmsg")
-	if kprobeTcpRecvMsgProg == nil {
+	e.kprobeTcpRecvMsgProg = e.collection.DetachProgram("kprobe_tcp_recvmsg")
+	if e.kprobeTcpRecvMsgProg == nil {
 		msg := fmt.Sprintf("Error: no program named %s found !", "kprobe_tcp_recvmsg")
-		log.Fatal(errors.New(msg))
+		return errors.New(msg)
 	}
 
-	kretprobeTcpRecvMsgProg := coll.DetachProgram("kretprobe_tcp_recvmsg")
-	if kretprobeTcpRecvMsgProg == nil {
+	e.kretprobeTcpRecvMsgProg = e.collection.DetachProgram("kretprobe_tcp_recvmsg")
+	if e.kretprobeTcpRecvMsgProg == nil {
 		msg := fmt.Sprintf("Error: no program named %s found !", "kretprobe_tcp_recvmsg")
-		log.Fatal(errors.New(msg))
+		return errors.New(msg)
 	}
 
-	kprobeTcpCloseProg := coll.DetachProgram("kprobe_tcp_close")
-	if kprobeTcpCloseProg == nil {
+	e.kprobeTcpCloseProg = e.collection.DetachProgram("kprobe_tcp_close")
+	if e.kprobeTcpCloseProg == nil {
 		msg := fmt.Sprintf("Error: no program named %s found !", "kprobe_tcp_close")
-		log.Fatal(errors.New(msg))
+		return errors.New(msg)
 	}
 
-	tcpSendMsgKP, err := link.Kprobe(tcpSendMsgFN, tcpSendMsgProg, nil)
+	e.tcpSendMsgKP, err = link.Kprobe(tcpSendMsgFN, e.tcpSendMsgProg, nil)
 	if err != nil {
-		log.Fatalf("opening kprobe: %s", err)
+		return err
 	}
-	defer tcpSendMsgKP.Close()
 
-	kprobeTcpRecvMsgKP, err := link.Kprobe(tcpRecvMsgFN, kprobeTcpRecvMsgProg, nil)
+	e.kprobeTcpRecvMsgKP, err = link.Kprobe(tcpRecvMsgFN, e.kprobeTcpRecvMsgProg, nil)
 	if err != nil {
-		log.Fatalf("opening kprobe: %s", err)
+		return err
 	}
-	defer kprobeTcpRecvMsgKP.Close()
 
-	kretprobeTcpRecvMsgKP, err := link.Kretprobe(tcpRecvMsgFN, kretprobeTcpRecvMsgProg, nil)
+	e.kretprobeTcpRecvMsgKP, err = link.Kretprobe(tcpRecvMsgFN, e.kretprobeTcpRecvMsgProg, nil)
 	if err != nil {
-		log.Fatalf("opening kretprobe: %s", err)
+		return err
 	}
-	defer kretprobeTcpRecvMsgKP.Close()
 
-	kprobeTcpCloseKP, err := link.Kprobe(tcpCloseFN, kprobeTcpCloseProg, nil)
+	e.kprobeTcpCloseKP, err = link.Kprobe(tcpCloseFN, e.kprobeTcpCloseProg, nil)
 	if err != nil {
-		log.Fatalf("opening kretprobe: %s", err)
+		return err
 	}
-	defer kprobeTcpCloseKP.Close()
 
 	sock, err := OpenRawSock(e.IfIndex)
 	if err != nil {
@@ -119,26 +131,43 @@ func (e *Ebpf) Load(spec *ebpf.CollectionSpec) error {
 	}
 	const keyIPAddr uint32 = 1
 	// inject target ip address, if request srcip no equal target ip, will drop
-	if err := coll.DetachMap("filter_map").Put(keyIPAddr, uint64(Htonl(IP4toDec(e.IPaddress)))); err != nil {
+	if err := e.collection.DetachMap("filter_map").Put(keyIPAddr, uint64(Htonl(IP4toDec(e.IPaddress)))); err != nil {
 		return err
 	}
-	m := coll.DetachMap("grpc_trace_map")
-	var (
-		key uint32
-		val []byte
-	)
-	for {
-		for m.Iterate().Next(&key, &val) {
-			value := DecodeMapItem(val)
-			metric := e.Converet(value)
-			if err := m.Delete(key); err != nil {
-				panic(err)
+	go func() {
+		m := e.collection.DetachMap("grpc_trace_map")
+		var (
+			key uint32
+			val []byte
+		)
+		for {
+			for m.Iterate().Next(&key, &val) {
+				value := DecodeMapItem(val)
+				metric := e.Converet(value)
+				if err := m.Delete(key); err != nil {
+					panic(err)
+				}
+				e.Ch <- *metric
 			}
-			e.Ch <- *metric
+			time.Sleep(1 * time.Second)
 		}
-		time.Sleep(1 * time.Second)
-	}
+	}()
 	return nil
+}
+
+func (e *Ebpf) Close() {
+	e.tcpSendMsgKP.Close()
+	e.kprobeTcpRecvMsgKP.Close()
+	e.kretprobeTcpRecvMsgKP.Close()
+	e.kprobeTcpCloseKP.Close()
+
+	e.socketProg.Close()
+	e.kprobeTcpCloseProg.Close()
+	e.kprobeTcpRecvMsgProg.Close()
+	e.kretprobeTcpRecvMsgProg.Close()
+	e.tcpSendMsgProg.Close()
+
+	e.collection.Close()
 }
 
 func (e *Ebpf) Converet(p *MapPackage) *Metric {

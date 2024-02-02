@@ -155,6 +155,10 @@ func (k *KprobeSysctlController) refreshPodInfo() error {
 	}
 
 	for i := range pods.Items {
+		// ignore evicted pods
+		if pods.Items[i].Status.Reason == "Evicted" {
+			continue
+		}
 		k.podCache.Set(string(pods.Items[i].UID), pods.Items[i], 30*time.Minute)
 		k.podCache.Set(pods.Items[i].Status.PodIP, pods.Items[i], 30*time.Minute)
 	}
