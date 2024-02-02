@@ -75,6 +75,9 @@ func (k *KprobeSysctlController) Start(ch chan<- *SysctlStat) error {
 	informer.AddEventHandler(clientgoCache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
 			newPod := obj.(*corev1.Pod)
+			if newPod.Status.Reason == "Evicted" {
+				return
+			}
 			k.podCache.Set(string(newPod.UID), *newPod, 30*time.Minute)
 			k.podCache.Set(newPod.Status.PodIP, *newPod, 30*time.Minute)
 		},

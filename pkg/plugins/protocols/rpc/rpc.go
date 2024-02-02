@@ -3,13 +3,11 @@ package rpc
 import (
 	"bytes"
 	"fmt"
-	"golang.org/x/sys/unix"
 	"log"
-	"net"
 	"regexp"
+	"sync"
 	"time"
 
-	"github.com/vishvananda/netlink"
 	"k8s.io/klog"
 
 	"github.com/cilium/ebpf"
@@ -28,77 +26,16 @@ var (
 )
 
 type provider struct {
+	sync.RWMutex
 	ch           chan rpcebpf.Metric
 	kprobeHelper kprobe.Interface
+	rpcProbes    map[int]*rpcebpf.Ebpf
 }
 
 func (p *provider) Init(ctx servicehub.Context) error {
 	p.kprobeHelper = ctx.Service("kprobe").(kprobe.Interface)
+	p.rpcProbes = make(map[int]*rpcebpf.Ebpf)
 	return nil
-}
-
-type NeighLink struct {
-	Neigh netlink.Neigh
-	Link  netlink.Link
-}
-
-// TODO: move this function to kprobe plugin, add some notify channel let protocol plugin listen veth link change
-func getAllVethes() ([]NeighLink, error) {
-	links, err := netlink.LinkList()
-	if err != nil {
-		return nil, err
-	}
-	targetLinks := make([]netlink.Link, 0)
-	for _, link := range links {
-		if link.Type() == "bridge" {
-			targetLinks = append(targetLinks, link)
-		}
-		if link.Type() == "veth" {
-			targetLinks = append(targetLinks, link)
-		}
-	}
-	ifs, err := net.Interfaces()
-	if err != nil {
-		return nil, err
-	}
-	ans := make([]NeighLink, 0)
-	for _, l := range targetLinks {
-		neighs, err := netlink.NeighList(l.Attrs().Index, unix.AF_INET)
-		if err != nil {
-			return nil, err
-		}
-		if len(neighs) == 1 && l.Type() == "veth" {
-			ans = append(ans, NeighLink{
-				Neigh: neighs[0],
-				Link:  l,
-			})
-			continue
-		}
-		for _, neigh := range neighs {
-			for _, iface := range ifs {
-				link, err := netlink.LinkByName(iface.Name)
-				if err != nil {
-					continue
-				}
-				if link.Type() == "veth" {
-					neighBr, errBr := netlink.NeighList(link.Attrs().Index, int(unix.AF_BRIDGE))
-					if errBr != nil {
-						continue
-					}
-					for _, neighB := range neighBr {
-						if neighB.HardwareAddr.String() == neigh.HardwareAddr.String() {
-							ans = append(ans, NeighLink{
-								Neigh: neigh,
-								Link:  link,
-							})
-							break
-						}
-					}
-				}
-			}
-		}
-	}
-	return ans, nil
 }
 
 func (p *provider) Gather(c chan metric.Metric) {
@@ -109,18 +46,55 @@ func (p *provider) Gather(c chan metric.Metric) {
 	if err != nil {
 		panic(err)
 	}
-	vethLinks, err := getAllVethes()
+	vethes, err := p.kprobeHelper.GetVethes()
 	if err != nil {
 		panic(err)
 	}
-	for _, link := range vethLinks {
-		go func(l NeighLink) {
-			proj := rpcebpf.NewEbpf(l.Link.Attrs().Index, l.Neigh.IP.String(), p.ch)
-			if err := proj.Load(spec); err != nil {
-				log.Fatalf("failed to load ebpf, err: %v", err)
-			}
-		}(link)
+	for _, veth := range vethes {
+		proj := rpcebpf.NewEbpf(veth.Link.Attrs().Index, veth.Neigh.IP.String(), p.ch)
+		if err := proj.Load(spec); err != nil {
+			log.Fatalf("failed to load ebpf, err: %v", err)
+		}
+		p.Lock()
+		p.rpcProbes[veth.Link.Attrs().Index] = proj
+		p.Unlock()
 	}
+	go p.sendMetrics(c)
+	vethEvents := p.kprobeHelper.RegisterNetLinkListener()
+	for {
+		select {
+		case event := <-vethEvents:
+			switch event.Type {
+			case kprobe.LinkAdd:
+				klog.Infof("veth add, index: %d, ip: %s", event.Link.Attrs().Index, event.Neigh.IP.String())
+				p.Lock()
+				if _, ok := p.rpcProbes[event.Link.Attrs().Index]; ok {
+					p.Unlock()
+					continue
+				}
+				proj := rpcebpf.NewEbpf(event.Link.Attrs().Index, event.Neigh.IP.String(), p.ch)
+				if err := proj.Load(spec); err != nil {
+					log.Fatalf("failed to load ebpf, err: %v", err)
+				}
+				p.rpcProbes[event.Link.Attrs().Index] = proj
+				p.Unlock()
+			case kprobe.LinkDelete:
+				klog.Infof("veth delete, index: %d, ip: %s", event.Link.Attrs().Index, event.Neigh.IP.String())
+				p.Lock()
+				proj, ok := p.rpcProbes[event.Link.Attrs().Index]
+				if ok {
+					proj.Close()
+					delete(p.rpcProbes, event.Link.Attrs().Index)
+				}
+				p.Unlock()
+			default:
+				klog.Infof("unknown event type: %v", event.Type)
+			}
+		}
+	}
+}
+
+func (p *provider) sendMetrics(c chan metric.Metric) {
 	for {
 		select {
 		case m := <-p.ch:
