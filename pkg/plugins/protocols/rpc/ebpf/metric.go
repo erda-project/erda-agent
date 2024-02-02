@@ -15,6 +15,8 @@ import (
 	"github.com/erda-project/ebpf-agent/pkg/hpack"
 )
 
+type RpcType string
+
 const (
 	ETHERNET_TYPE_IPV4 = "ipv4"
 	ETHERNET_TYPE_IPV6 = "ipv6"
@@ -22,9 +24,9 @@ const (
 
 const (
 	// RPC_TYPE_DUBBO dubbo
-	RPC_TYPE_DUBBO = "DUBBO"
+	RPC_TYPE_DUBBO RpcType = "DUBBO"
 	// RPC_TYPE_GRPC grpc
-	RPC_TYPE_GRPC = "GRPC"
+	RPC_TYPE_GRPC RpcType = "GRPC"
 )
 
 type MapPackage struct {
@@ -45,7 +47,7 @@ type MapPackage struct {
 }
 
 type Metric struct {
-	RpcType      string
+	RpcType      RpcType
 	Phase        uint32
 	EthernetType string
 	DstIP        string
@@ -98,7 +100,7 @@ func DecodeMapItem(e []byte) *MapPackage {
 	m.SrcIP = net.IP(e[20:24]).String()
 	m.SrcPort = binary.BigEndian.Uint16(e[24:28])
 	m.Seq = binary.BigEndian.Uint16(e[28:32])
-	m.Duration = binary.LittleEndian.Uint32(e[32:36]) / 1000 / 1000
+	m.Duration = binary.LittleEndian.Uint32(e[32:36])
 	m.Pid = binary.LittleEndian.Uint32(e[36:40])
 	m.PathLen = int(e[40])
 	var err error
@@ -111,7 +113,28 @@ func DecodeMapItem(e []byte) *MapPackage {
 	}
 	// dubbo path
 	if m.RpcType == 3 {
-		m.Path = string(e[41:101])
+		//m.Path = string(e[41:121])
+		tmp := e[41:121]
+		j := 0
+		for i := 0; i < len(tmp); i++ {
+			if tmp[i] == 0x05 {
+				m.Path += string(tmp[j:i])
+				j = i + 1
+			}
+			if j != 0 && tmp[i] == 0x00 {
+				m.Path += string(tmp[j:i])
+				j = i + 1
+			}
+			if j != 0 && tmp[i] == 0x08 {
+				m.Path += string(tmp[j:i])
+				j = i + 1
+			}
+			if j != 0 && tmp[i] == 0x12 {
+				m.Path += string(tmp[j:i])
+				j = i + 1
+			}
+		}
+		m.Path = strings.ReplaceAll(m.Path, "\n", "")
 	}
 	m.Status, err = encodeHeader(e[141:142])
 	if err != nil {

@@ -20,6 +20,23 @@ struct bpf_map_def SEC("maps/package_map") grpc_request_map = {
 	.max_entries = 1024 * 10,
 };
 
+struct bpf_map_def SEC("maps/package_map") filter_map = {
+    .type = BPF_MAP_TYPE_HASH,
+    .key_size = sizeof(__u32),
+    .value_size = sizeof(__u64),
+    .max_entries = 1,
+};
+
+int __get_target_ip() {
+    __u32 filter_ip_key = 1;
+    __u32 *us_ipAddress;
+    us_ipAddress = bpf_map_lookup_elem(&filter_map, &filter_ip_key);
+    if (!us_ipAddress) {
+        return 0;
+    }
+    return *us_ipAddress;
+}
+
 
 SEC("socket")
 int rpc__filter_package(struct __sk_buff *skb)
@@ -73,6 +90,11 @@ int rpc__filter_package(struct __sk_buff *skb)
         pkg.pid = pid_info->pid;
     }
     if (pkg.phase == P_REQUEST) {
+        __u32 ip;
+        ip = __get_target_ip();
+        if (ip != 0 && ip != pkg.srcIP) {
+            return 0;
+        }
         sock_key req_conn = {0};
         req_conn.srcIP = pkg.srcIP;
         req_conn.dstIP = pkg.dstIP;
