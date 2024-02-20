@@ -27,6 +27,8 @@ const (
 	RPC_TYPE_DUBBO RpcType = "DUBBO"
 	// RPC_TYPE_GRPC grpc
 	RPC_TYPE_GRPC RpcType = "GRPC"
+	// RPC_TYPE_MYSQL mysql
+	RPC_TYPE_MYSQL RpcType = "MYSQL"
 )
 
 type MapPackage struct {
@@ -111,6 +113,9 @@ func DecodeMapItem(e []byte) *MapPackage {
 			m.Path = string(e[41 : m.PathLen+41+1])
 		}
 	}
+	if m.RpcType == 4 {
+		m.Path = string(e[41:121])
+	}
 	// dubbo path
 	if m.RpcType == 3 {
 		//m.Path = string(e[41:121])
@@ -143,6 +148,13 @@ func DecodeMapItem(e []byte) *MapPackage {
 	// dubbo status
 	if m.RpcType == 3 {
 		m.Status = strconv.Itoa(int(e[142]))
+	}
+	if m.RpcType == 4 {
+		if uint16(e[144]) == 200 {
+			m.Status = "200"
+		} else {
+			m.Status = strconv.FormatUint(uint64(binary.BigEndian.Uint16(e[144:])), 10)
+		}
 	}
 	return m
 }

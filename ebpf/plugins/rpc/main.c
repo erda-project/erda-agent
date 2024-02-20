@@ -43,17 +43,22 @@ int rpc__filter_package(struct __sk_buff *skb)
 {
     skb_info_t skb_info = {0};
     conn_tuple_t skb_tup = {0};
+    classification_buffer_t buffer = {0};
     struct rpc_package_t pkg = {0};
     pkg.phase = P_UNKNOWN;
     if (!read_conn_tuple_skb(skb, &skb_info, &skb_tup)) {
         return 0;
     }
+    __init_buffer(skb, &skb_info, &buffer);
+    const char *buf = &buffer.data[0];
     if (is_dubbo_magic(skb, &skb_info)) {
         dubbo_event_t event = judge_dubbo_protocol(skb, &skb_info, &pkg);
         if (event == IS_DUBBO_EVENT) {
             return 0;
         }
         pkg.rpc_type = PAYLOAD_DUBBO;
+    } else if (is_mysql(buf, buffer.size, &skb_info, &pkg)) {
+        pkg.rpc_type = PAYLOAD_MYSQL;
     } else {
         rpc_status_t status = judge_rpc(skb, &skb_info, &pkg);
         if (status != PAYLOAD_GRPC) {
@@ -79,9 +84,6 @@ int rpc__filter_package(struct __sk_buff *skb)
     } else {
         return 0;
     }
-//    if (status == PAYLOAD_GRPC) {
-//        bpf_printk("scan grpc package, srcport: %d, dstport: %d, phase: %d\n", skb_tup.sport, skb_tup.dport, pkg.phase);
-//    }
     pkg.dstPort = bpf_ntohs(skb_tup.dport);
     pkg.srcPort = bpf_ntohs(skb_tup.sport);
     pkg.seq = bpf_ntohs(skb_info.tcp_seq);

@@ -176,6 +176,8 @@ func (e *Ebpf) Converet(p *MapPackage) *Metric {
 		m.RpcType = RPC_TYPE_GRPC
 	} else if p.RpcType == 3 {
 		m.RpcType = RPC_TYPE_DUBBO
+	} else if p.RpcType == 4 {
+		m.RpcType = RPC_TYPE_MYSQL
 	}
 	m.Phase = p.Phase
 	m.EthernetType = p.EthernetType

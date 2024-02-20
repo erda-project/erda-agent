@@ -98,12 +98,14 @@ func (p *provider) sendMetrics(c chan metric.Metric) {
 	for {
 		select {
 		case m := <-p.ch:
+			klog.Infof("rpc metric: %+v", m)
 			if len(m.Status) == 0 || len(m.Path) == 0 {
 				continue
 			}
-			mc := p.convertRpc2Metric(&m)
-			c <- mc
-			klog.Infof("rpc metric: %+v", mc)
+			if m.RpcType != rpcebpf.RPC_TYPE_MYSQL {
+				mc := p.convertRpc2Metric(&m)
+				c <- mc
+			}
 		}
 	}
 }

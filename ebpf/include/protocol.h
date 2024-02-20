@@ -19,6 +19,7 @@ typedef enum {
     PAYLOAD_GRPC,
     PAYLOAD_NOT_GRPC,
     PAYLOAD_DUBBO,
+    PAYLOAD_MYSQL,
 } rpc_status_t;
 
 enum dubbo_phase {
@@ -40,21 +41,22 @@ enum eth_ip_type {
 #define MAX_HTTP2_STATUS_HEADER_LENGTH 1
 
 struct rpc_package_t {
-    __u32 rpc_type;
-	__u32 phase;
-	__u32 ip_type;
-	__u32 dstIP;
-    __u32 dstPort;
-    __u32 srcIP;
-	__u32 srcPort;
-	__u32 seq;
+    __u32 rpc_type; // 4
+	__u32 phase; // 8
+	__u32 ip_type; // 12
+	__u32 dstIP; // 16
+    __u32 dstPort; // 20
+    __u32 srcIP; // 24
+	__u32 srcPort; // 28
+	__u32 seq; // 32
 	//packge的产生时间
-	__u32 duration;
-	__u32 pid;
-	__u8 path_len;
-	char path[MAX_HTTP2_PATH_CONTENT_LENGTH];
-	char status[MAX_HTTP2_STATUS_HEADER_LENGTH];
-	__u8 dubbo_status;
+	__u32 duration; // 36
+	__u32 pid; // 40
+	__u8 path_len; // 41
+	char path[MAX_HTTP2_PATH_CONTENT_LENGTH]; // 141
+	char status[MAX_HTTP2_STATUS_HEADER_LENGTH]; // 142
+	__u8 dubbo_status; // 143
+	__u16 mysql_status; // 145
 };
 
 #define IP_MF	  0x2000
@@ -64,6 +66,166 @@ struct rpc_package_t {
 #define HTTP2_SETTINGS_SIZE 6
 
 #define HTTP2_MARKER_SIZE 24
+#define CLASSIFICATION_MAX_BUFFER (HTTP2_MARKER_SIZE)
+#define BLK_SIZE (16)
+
+#define STRINGIFY(a) #a
+
+// mysql
+// Each MySQL command starts with mysql_hdr, thus the minimum length is sizeof(mysql_hdr).
+#define MYSQL_MIN_LENGTH 5
+
+// Taken from https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_com_query.html
+#define MYSQL_COMMAND_QUERY 0x3
+// Taken from https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_com_stmt_prepare.html
+#define MYSQL_PREPARE_QUERY 0x16
+// Taken from https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_connection_phase_packets_protocol_handshake_v10.html.
+#define MYSQL_SERVER_GREETING_V10 0xa
+// Taken from https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_connection_phase_packets_protocol_handshake_v9.html.
+#define MYSQL_SERVER_GREETING_V9 0x9
+#define MYSQL_OK00_RESPONSE 0x0
+#define MYSQL_EOF_RESPONSE 0xfe
+#define MYSQL_ERR_RESPONSE 0xff
+// Represents <digit><digit><dot>
+#define MAX_VERSION_COMPONENT 3
+// Represents <digit>
+#define MIN_BUGFIX_VERSION_COMPONENT 1
+// Represents <digit><dot>
+#define MIN_MINOR_VERSION_COMPONENT 2
+// Minium version string is <digit>.<digit>.<digit>
+#define MIN_VERSION_SIZE 5
+// https://dev.mysql.com/doc/dev/mysql-server/latest/page_protocol_com_query_response_text_resultset_column_definition.html#sect_protocol_com_query_response_text_resultset_column_definition_41
+#define MYSQL_CATALOG_LOG_SIZE 3
+#define MYSQL_OK_STATUS 200
+
+#define SQL_COMMAND_MAX_SIZE 6
+#define MYSQL_RESPONSE_MAX_SIZE 10
+#define MYSQL_QUERY_MAX_SIZE 30
+
+#define SQL_ALTER "ALTER"
+#define SQL_CREATE "CREATE"
+#define SQL_DELETE "DELETE"
+#define SQL_DROP "DROP"
+#define SQL_INSERT "INSERT"
+#define SQL_SELECT "SELECT"
+#define SQL_UPDATE "UPDATE"
+#define SQL_SHOW "SHOW"
+#define CATALOG_DEF "def"
+
+// MySQL header format. Starts with 24 bits (3 bytes) of the length of the payload, a one byte of sequence id,
+// a one byte to represent the message type.
+typedef struct {
+    __u32 payload_length:24;
+    __u8 seq_id;
+    __u8 command_type;
+} __attribute__((packed)) mysql_hdr;
+
+typedef struct {
+    __u16 err_code;
+} __attribute__((packed)) mysql_err_hdr;
+
+typedef struct {
+    __u32 length;
+    __u8 seq_id;
+    char catalog[MYSQL_CATALOG_LOG_SIZE];
+} __attribute__((packed)) mysql_catalog;
+
+#define check_command(buf, command, buf_size) \
+    (!bpf_memcmp((buf), &(command), sizeof(command) - 1))
+
+static __always_inline __u32 is_version_component_helper(const char *buf, __u32 offset, __u32 buf_size, char delimiter) {
+    char current_char;
+#pragma unroll MAX_VERSION_COMPONENT
+    for (unsigned i = 0; i < MAX_VERSION_COMPONENT; i++) {
+        if (offset + i >= buf_size) {
+            break;
+        }
+        current_char = buf[offset+i];
+        if ('0' <= current_char && current_char <= '9') {
+            continue;
+        }
+        if (current_char == delimiter && i > 0) {
+            return i+1;
+        }
+        // Any other character is not supported.
+        break;
+   }
+   return 0;
+}
+
+static __always_inline bool is_version(const char* buf, __u32 buf_size) {
+    if (buf_size < MIN_VERSION_SIZE) {
+        return false;
+    }
+
+    u32 read_size = 0;
+    const __u32 major_component_size = is_version_component_helper(buf, 0, buf_size, '.');
+    if (major_component_size == 0) {
+        return false;
+    }
+    read_size += major_component_size;
+
+    const __u32 minor_component_size = is_version_component_helper(buf, read_size, buf_size, '.');
+    if (minor_component_size == 0) {
+        return false;
+    }
+    read_size += minor_component_size;
+    return is_version_component_helper(buf, read_size, buf_size, '\0') > 0;
+}
+
+static __always_inline bool is_sql_command(const char *buf, __u32 buf_size, struct rpc_package_t *pkg) {
+    char tmp[SQL_COMMAND_MAX_SIZE];
+
+    // Convert what would be the query to uppercase to match queries like
+    // 'select * from table'
+    #pragma unroll (SQL_COMMAND_MAX_SIZE)
+    for (int i = 0; i < SQL_COMMAND_MAX_SIZE; i++) {
+        if ('a' <= buf[i] && buf[i] <= 'z') {
+            tmp[i] = buf[i] - 'a' +'A';
+        } else {
+            tmp[i] = buf[i];
+        }
+    }
+
+    bool is_command = check_command(tmp, SQL_ALTER, buf_size)
+        || check_command(tmp, SQL_CREATE, buf_size)
+        || check_command(tmp, SQL_DELETE, buf_size)
+        || check_command(tmp, SQL_DROP, buf_size)
+        || check_command(tmp, SQL_INSERT, buf_size)
+        || check_command(tmp, SQL_SELECT, buf_size)
+        || check_command(tmp, SQL_UPDATE, buf_size)
+        || check_command(tmp, SQL_SHOW, buf_size);
+
+    if (is_command) {
+        for (int i = 0; i < MYSQL_QUERY_MAX_SIZE; i++) {
+            pkg->path[i] = buf[i];
+        }
+        pkg->phase = P_REQUEST;
+    }
+    return is_command;
+}
+
+static __always_inline bool is_mysql_err_response(const char *buf, __u32 buf_size, struct rpc_package_t *pkg) {
+    mysql_err_hdr header = *((mysql_err_hdr *)buf);
+    bool is_response = header.err_code > 0;
+    if (is_response) {
+        pkg->phase = P_RESPONSE;
+        pkg->mysql_status = bpf_ntohs(header.err_code);
+    }
+    return is_response;
+}
+
+static __always_inline bool is_mysql_catalog(const char *buf, __u32 buf_size, struct rpc_package_t *pkg) {
+    mysql_catalog log = *((mysql_catalog *)buf);
+    bool is_catalog = log.catalog[0] == 'd' && log.catalog[1] == 'e' && log.catalog[2] == 'f';
+    if (is_catalog) {
+        pkg->phase = P_RESPONSE;
+        pkg->mysql_status = MYSQL_OK_STATUS;
+    }
+    return is_catalog;
+}
+
+// end mysql
 
 #define GRPC_MAX_FRAMES_TO_FILTER 10
 #define GRPC_MAX_FRAMES_TO_PROCESS 1
@@ -83,6 +245,48 @@ struct rpc_package_t {
 #define HTTP2_CONTENT_TYPE_IDX 31
 #define HTTP2_PATH_HEADER_IDX 5
 #define HTTP2_STATUS_HEADER_IDX 8
+
+typedef struct {
+    char data[CLASSIFICATION_MAX_BUFFER];
+    size_t size;
+} classification_buffer_t;
+
+#define READ_INTO_BUFFER(name, total_size, blk_size)                                                                \
+    static __always_inline void read_into_buffer_##name(char *buffer, struct __sk_buff *skb, u32 offset) {          \
+        const u32 end = (total_size) < (skb->len - offset) ? offset + (total_size) : skb->len;                      \
+        unsigned i = 0;                                                                                             \
+                                                                                                                    \
+    _Pragma( STRINGIFY(unroll(total_size/blk_size)) )                                                               \
+        for (; i < ((total_size) / (blk_size)); i++) {                                                              \
+            if (offset + (blk_size) - 1 >= end) { break; }                                                          \
+                                                                                                                    \
+            bpf_skb_load_bytes(skb, offset, buffer, (blk_size));                                     \
+            offset += (blk_size);                                                                                   \
+            buffer += (blk_size);                                                                                   \
+        }                                                                                                           \
+        if ((i * (blk_size)) >= total_size) {                                                                       \
+            return;                                                                                                 \
+        }                                                                                                           \
+        /* Calculating the remaining bytes to read. If we have none, then we abort. */                              \
+        const s64 left_payload = (s64)end - (s64)offset;                                                            \
+        if (left_payload < 1) {                                                                                     \
+            return;                                                                                                 \
+        }                                                                                                           \
+                                                                                                                    \
+        /* The maximum that we can read is (blk_size) - 1. Checking (to please the verifier) that we read no more */\
+        /* than the allowed max size. */                                                                            \
+        const s64 read_size = left_payload < (blk_size) - 1 ? left_payload : (blk_size) - 1;                        \
+                                                                                                                    \
+        /* Calculating the absolute size from the allocated buffer, that was left empty, again to please the */     \
+        /* verifier so it can be assured we are not exceeding the memory limits. */                                 \
+        const s64 left_buffer = (s64)(total_size) < (s64)(i*(blk_size)) ? 0 : total_size - i*(blk_size);            \
+        if (read_size <= left_buffer) {                                                                             \
+            bpf_skb_load_bytes(skb, offset, buffer, read_size);                                      \
+        }                                                                                                           \
+        return;                                                                                                     \
+    }
+
+READ_INTO_BUFFER(for_classification, CLASSIFICATION_MAX_BUFFER, BLK_SIZE)
 
 typedef enum
 {
@@ -163,6 +367,13 @@ typedef struct {
     __u32 tcp_seq;
     __u8 tcp_flags;
 } skb_info_t;
+
+static __always_inline void __init_buffer(struct __sk_buff *skb, skb_info_t *skb_info, classification_buffer_t* buffer) {
+    bpf_memset(buffer->data, 0, sizeof(buffer->data));
+    read_into_buffer_for_classification((char *)buffer->data, skb, skb_info->data_off);
+    const size_t payload_length = skb->len - skb_info->data_off;
+    buffer->size = payload_length < CLASSIFICATION_MAX_BUFFER ? payload_length : CLASSIFICATION_MAX_BUFFER;
+}
 
 static inline int ip_is_fragment(struct __sk_buff *skb, __u32 nhoff)
 {
@@ -575,4 +786,39 @@ static __always_inline dubbo_event_t judge_dubbo_protocol(const struct __sk_buff
 //        bpf_printk("dubbo response data: %s\n", res_data);
 //    }
     return NOT_DUBBO_EVENT;
+}
+
+static __always_inline bool is_mysql(const char* buf, __u32 buf_size, const skb_info_t *skb_info, struct rpc_package_t *pkg) {
+    CHECK_PRELIMINARY_BUFFER_CONDITIONS(buf, buf_size, MYSQL_MIN_LENGTH);
+
+    mysql_hdr header = *((mysql_hdr *)buf);
+    if (header.payload_length == 0) {
+        return false;
+    }
+
+    switch (header.command_type) {
+    case MYSQL_COMMAND_QUERY:
+//        bpf_printk("mysql query\n");
+        return is_sql_command((char*)(buf+sizeof(mysql_hdr)), buf_size-sizeof(mysql_hdr), pkg);
+    case MYSQL_OK00_RESPONSE:
+//        bpf_printk("mysql ok response\n");
+        pkg->phase = P_RESPONSE;
+        pkg->mysql_status = MYSQL_OK_STATUS;
+        return 1;
+    case MYSQL_EOF_RESPONSE:
+        pkg->phase = P_RESPONSE;
+        pkg->mysql_status = MYSQL_OK_STATUS;
+        return 1;
+    case MYSQL_ERR_RESPONSE:
+//        bpf_printk("mysql err response\n");
+        return is_mysql_err_response((char*)(buf+sizeof(mysql_hdr)), buf_size-sizeof(mysql_hdr), pkg);
+    case MYSQL_PREPARE_QUERY:
+        return is_sql_command((char*)(buf+sizeof(mysql_hdr)), buf_size-sizeof(mysql_hdr), pkg);
+    case MYSQL_SERVER_GREETING_V10:
+    case MYSQL_SERVER_GREETING_V9:
+        return is_version((char*)(buf+sizeof(mysql_hdr)), buf_size-sizeof(mysql_hdr));
+    default:
+//        bpf_printk("mysql commond type: %d\n", header.command_type);
+        return is_mysql_catalog((char*)(buf+sizeof(mysql_hdr)), buf_size-sizeof(mysql_hdr), pkg);
+    }
 }
