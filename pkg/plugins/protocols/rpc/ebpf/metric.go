@@ -46,6 +46,7 @@ type MapPackage struct {
 	PathLen      int
 	Path         string
 	Status       string
+	MysqlErr     string
 }
 
 type Metric struct {
@@ -66,6 +67,7 @@ type Metric struct {
 	PathLen      int
 	Path         string
 	Status       string
+	MysqlErr     string
 }
 
 func (m *Metric) CovertMetric() metric.Metric {
@@ -153,8 +155,9 @@ func DecodeMapItem(e []byte) *MapPackage {
 		if uint16(e[144]) == 200 {
 			m.Status = "200"
 		} else {
-			m.Status = strconv.FormatUint(uint64(binary.BigEndian.Uint16(e[144:])), 10)
+			m.Status = strconv.FormatUint(uint64(binary.BigEndian.Uint16(e[144:146])), 10)
 		}
+		m.MysqlErr = string(e[146:])
 	}
 	return m
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 
 	"github.com/cilium/ebpf/rlimit"
 	"k8s.io/klog"
@@ -60,15 +61,14 @@ func (p *provider) Run(ctx context.Context) error {
 		select {
 		case m := <-ch:
 			//处理metric, print / influxdb / prometheus / erda   等
-			klog.Infof("[%d] metric is waiting to write", len(ch))
-			klog.Infof(m.String())
+			//klog.Infof("[%d] metric is waiting to write", len(ch))
 			// TODO： push other metrics to collector
-			if m.Name == "docker_container_summary" || m.Name == "application_rpc" {
+			if m.Name == "docker_container_summary" || strings.HasPrefix(m.Name, "application_") {
 				if err := p.collectorClient.Send([]*metric.Metric{&m}); err != nil {
 					klog.Errorf("send metric to collector error: %v", err)
 					continue
 				}
-				klog.Infof("send metric to collector success")
+				//klog.Infof("send metric to collector success")
 			}
 			//influxdb.Write(m)
 		}

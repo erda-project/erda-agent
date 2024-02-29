@@ -18,7 +18,10 @@ import (
 )
 
 const (
-	measurementGroup = "application_rpc"
+	rpcMeasurementGroup      = "application_rpc"
+	rpcErrorMeasurementGroup = rpcMeasurementGroup + "_error"
+	dbMeasurementGroup       = "application_db"
+	dbErrorMeasurementGroup  = dbMeasurementGroup + "_error"
 )
 
 var (
@@ -46,6 +49,13 @@ func (p *provider) Gather(c chan metric.Metric) {
 	if err != nil {
 		panic(err)
 	}
+	//proj := rpcebpf.NewEbpf(5, "172.18.0.2", p.ch)
+	//if err := proj.Load(spec); err != nil {
+	//	log.Fatalf("failed to load ebpf, err: %v", err)
+	//}
+	//p.Lock()
+	//p.rpcProbes[2] = proj
+	//p.Unlock()
 	vethes, err := p.kprobeHelper.GetVethes()
 	if err != nil {
 		panic(err)
@@ -98,24 +108,20 @@ func (p *provider) sendMetrics(c chan metric.Metric) {
 	for {
 		select {
 		case m := <-p.ch:
-			klog.Infof("rpc metric: %+v", m)
 			if len(m.Status) == 0 || len(m.Path) == 0 {
 				continue
 			}
-			if m.RpcType != rpcebpf.RPC_TYPE_MYSQL {
-				mc := p.convertRpc2Metric(&m)
-				c <- mc
-			}
+			mc := p.convertRpc2Metric(&m)
+			c <- mc
+			klog.Infof("rpc metric: %+v", mc)
 		}
 	}
 }
 
 func (p *provider) convertRpc2Metric(m *rpcebpf.Metric) metric.Metric {
 	res := metric.Metric{
-		Name:        measurementGroup,
-		Measurement: measurementGroup,
-		Timestamp:   time.Now().UnixNano(),
-		Tags:        map[string]string{},
+		Timestamp: time.Now().UnixNano(),
+		Tags:      map[string]string{},
 		Fields: map[string]interface{}{
 			"elapsed_count": 1,
 			"elapsed_sum":   m.Duration,
@@ -124,9 +130,33 @@ func (p *provider) convertRpc2Metric(m *rpcebpf.Metric) metric.Metric {
 			"elapsed_mean":  m.Duration,
 		},
 	}
+	switch m.RpcType {
+	case rpcebpf.RPC_TYPE_DUBBO, rpcebpf.RPC_TYPE_GRPC:
+		res.Name, res.Measurement = rpcMeasurementGroup, rpcMeasurementGroup
+	case rpcebpf.RPC_TYPE_MYSQL:
+		res.Name, res.Measurement = dbMeasurementGroup, dbMeasurementGroup
+		res.Tags["db_statement"] = m.Path
+	default:
+
+	}
+	if m.RpcType == rpcebpf.RPC_TYPE_MYSQL {
+		res.Tags["db_statement"] = m.Path
+		if m.Status != "200" {
+			res.Name = dbErrorMeasurementGroup
+			res.Measurement = dbErrorMeasurementGroup
+			res.Tags["db_error"] = m.MysqlErr
+		}
+	}
 	res.Tags["metric_source"] = "ebpf"
 	res.Tags["_meta"] = "true"
 	res.Tags["_metric_scope"] = "micro_service"
+	res.Tags["span_kind"] = "server"
+	res.Tags["rpc_type"] = string(m.RpcType)
+	res.Tags["method"] = m.Path
+	res.Tags["peer_address"] = fmt.Sprintf("%s:%d", m.DstIP, m.DstPort)
+	res.Tags["peer_service"] = m.Path
+	res.Tags["component"] = string(m.RpcType)
+	res.Tags["db_host"] = fmt.Sprintf("%s:%d", m.SrcIP, m.SrcPort)
 	var rpcTarget, rpcMethod, rpcService, rpcVersion, serviceVersion string
 	rpcTarget = m.Path
 	parseLine := pathRegexp.FindStringSubmatch(m.Path)
@@ -138,38 +168,34 @@ func (p *provider) convertRpc2Metric(m *rpcebpf.Metric) metric.Metric {
 		serviceVersion = parseLine[3]
 	}
 	res.Tags["rpc_target"] = rpcTarget
+	if m.RpcType == rpcebpf.RPC_TYPE_DUBBO {
+		res.Tags["dubbo_service"] = rpcService
+		res.Tags["dubbo_version"] = rpcVersion
+		res.Tags["dubbo_method"] = rpcMethod
+		res.Tags["service_version"] = serviceVersion
+		if m.Status == "20" {
+			res.Tags["error"] = "false"
+		} else {
+			res.Name = rpcErrorMeasurementGroup
+			res.Measurement = rpcErrorMeasurementGroup
+			res.Tags["error"] = "true"
+		}
+		res.Tags["rpc_method"] = res.Tags["dubbo_method"]
+		res.Tags["rpc_service"] = res.Tags["dubbo_service"]
+	} else {
+		if m.Status == "200" {
+			res.Tags["error"] = "false"
+		} else {
+			res.Tags["error"] = "true"
+		}
+	}
 	targetPod, err := p.kprobeHelper.GetPodByUID(m.SrcIP)
 	if err == nil {
 		res.OrgName = targetPod.Labels["DICE_ORG_NAME"]
 		res.Tags["cluster_name"] = targetPod.Labels["DICE_CLUSTER_NAME"]
-		res.Tags["component"] = string(m.RpcType)
-		res.Tags["db_host"] = fmt.Sprintf("%s:%d", m.SrcIP, m.SrcPort)
-		res.Tags["method"] = m.Path
 		res.Tags["_metric_scope_id"] = targetPod.Annotations["msp.erda.cloud/terminus_key"]
-		if m.RpcType == rpcebpf.RPC_TYPE_DUBBO {
-			res.Tags["dubbo_service"] = rpcService
-			res.Tags["dubbo_version"] = rpcVersion
-			res.Tags["dubbo_method"] = rpcMethod
-			res.Tags["service_version"] = serviceVersion
-			if m.Status == "20" {
-				res.Tags["error"] = "false"
-			} else {
-				res.Tags["error"] = "true"
-			}
-		} else {
-			if m.Status == "200" {
-				res.Tags["error"] = "false"
-			} else {
-				res.Tags["error"] = "true"
-			}
-		}
 		res.Tags["host_ip"] = targetPod.Status.HostIP
 		res.Tags["org_name"] = targetPod.Labels["DICE_ORG_NAME"]
-		res.Tags["peer_address"] = fmt.Sprintf("%s:%d", m.DstIP, m.DstPort)
-		res.Tags["peer_service"] = m.Path
-		res.Tags["rpc_method"] = res.Tags["dubbo_method"]
-		res.Tags["rpc_service"] = res.Tags["dubbo_service"]
-		res.Tags["span_kind"] = "server"
 		res.Tags["target_application_id"] = targetPod.Labels["DICE_APPLICATION_ID"]
 		res.Tags["target_application_name"] = targetPod.Labels["DICE_APPLICATION_NAME"]
 		res.Tags["target_org_id"] = targetPod.Labels["DICE_ORG_ID"]
@@ -185,15 +211,20 @@ func (p *provider) convertRpc2Metric(m *rpcebpf.Metric) metric.Metric {
 	}
 	sourcePod, err := p.kprobeHelper.GetPodByUID(m.DstIP)
 	if err == nil {
+		res.OrgName = sourcePod.Labels["DICE_ORG_NAME"]
 		res.Tags["source_application_id"] = sourcePod.Labels["DICE_APPLICATION_ID"]
 		res.Tags["source_application_name"] = sourcePod.Labels["DICE_APPLICATION_NAME"]
 		res.Tags["source_org_id"] = sourcePod.Labels["DICE_ORG_ID"]
+		res.Tags["org_name"] = sourcePod.Labels["DICE_ORG_NAME"]
+		res.Tags["cluster_name"] = sourcePod.Labels["DICE_CLUSTER_NAME"]
 		res.Tags["source_project_id"] = sourcePod.Labels["DICE_PROJECT_ID"]
 		res.Tags["source_project_name"] = sourcePod.Labels["DICE_PROJECT_NAME"]
 		res.Tags["source_runtime_id"] = sourcePod.Labels["DICE_RUNTIME_ID"]
 		res.Tags["source_runtime_name"] = sourcePod.Annotations["msp.erda.cloud/runtime_name"]
 		res.Tags["source_service_id"] = fmt.Sprintf("%s_%s_%s", sourcePod.Labels["DICE_APPLICATION_ID"], sourcePod.Annotations["msp.erda.cloud/runtime_name"], sourcePod.Labels["DICE_SERVICE_NAME"])
+		res.Tags["source_service_name"] = sourcePod.Annotations["msp.erda.cloud/service_name"]
 		res.Tags["source_workspace"] = sourcePod.Annotations["msp.erda.cloud/workspace"]
+		res.Tags["source_terminus_key"] = sourcePod.Annotations["msp.erda.cloud/terminus_key"]
 	}
 	return res
 }

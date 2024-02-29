@@ -40,6 +40,8 @@ enum eth_ip_type {
 #define MAX_HTTP2_PATH_CONTENT_LENGTH 100
 #define MAX_HTTP2_STATUS_HEADER_LENGTH 1
 
+#define MYSQL_ERROR_MESSAGE_MAX_SIZE 10
+
 struct rpc_package_t {
     __u32 rpc_type; // 4
 	__u32 phase; // 8
@@ -57,6 +59,7 @@ struct rpc_package_t {
 	char status[MAX_HTTP2_STATUS_HEADER_LENGTH]; // 142
 	__u8 dubbo_status; // 143
 	__u16 mysql_status; // 145
+	char mysql_msg[MYSQL_ERROR_MESSAGE_MAX_SIZE];
 };
 
 #define IP_MF	  0x2000
@@ -121,7 +124,9 @@ typedef struct {
 } __attribute__((packed)) mysql_hdr;
 
 typedef struct {
-    __u16 err_code;
+    __u32 err_code;
+    __u32 sql_state;
+    char msg[MYSQL_ERROR_MESSAGE_MAX_SIZE];
 } __attribute__((packed)) mysql_err_hdr;
 
 typedef struct {
@@ -211,6 +216,9 @@ static __always_inline bool is_mysql_err_response(const char *buf, __u32 buf_siz
     if (is_response) {
         pkg->phase = P_RESPONSE;
         pkg->mysql_status = bpf_ntohs(header.err_code);
+        for (int i = 0; i < MYSQL_ERROR_MESSAGE_MAX_SIZE; i++) {
+            pkg->mysql_msg[i] = header.msg[i];
+        }
     }
     return is_response;
 }
@@ -800,15 +808,14 @@ static __always_inline bool is_mysql(const char* buf, __u32 buf_size, const skb_
     case MYSQL_COMMAND_QUERY:
 //        bpf_printk("mysql query\n");
         return is_sql_command((char*)(buf+sizeof(mysql_hdr)), buf_size-sizeof(mysql_hdr), pkg);
-    case MYSQL_OK00_RESPONSE:
-//        bpf_printk("mysql ok response\n");
-        pkg->phase = P_RESPONSE;
-        pkg->mysql_status = MYSQL_OK_STATUS;
-        return 1;
-    case MYSQL_EOF_RESPONSE:
-        pkg->phase = P_RESPONSE;
-        pkg->mysql_status = MYSQL_OK_STATUS;
-        return 1;
+//    case MYSQL_OK00_RESPONSE:
+//        pkg->phase = P_RESPONSE;
+//        pkg->mysql_status = MYSQL_OK_STATUS;
+//        return 1;
+//    case MYSQL_EOF_RESPONSE:
+//        pkg->phase = P_RESPONSE;
+//        pkg->mysql_status = MYSQL_OK_STATUS;
+//        return 1;
     case MYSQL_ERR_RESPONSE:
 //        bpf_printk("mysql err response\n");
         return is_mysql_err_response((char*)(buf+sizeof(mysql_hdr)), buf_size-sizeof(mysql_hdr), pkg);

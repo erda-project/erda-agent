@@ -119,7 +119,6 @@ int rpc__filter_package(struct __sk_buff *skb)
                 pkg.path[i] = request_pkg->path[i];
             }
             bpf_map_delete_elem(&grpc_request_map, &req_conn);
-//            bpf_printk("found request! duration: %d\n", pkg.duration);
             bpf_map_update_elem(&grpc_trace_map, &skb_info.tcp_seq, &pkg, BPF_ANY);
         }
     } else {

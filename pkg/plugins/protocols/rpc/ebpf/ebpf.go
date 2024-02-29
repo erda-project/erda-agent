@@ -192,6 +192,7 @@ func (e *Ebpf) Converet(p *MapPackage) *Metric {
 	m.Path = p.Path
 	m.PathLen = p.PathLen
 	m.Status = p.Status
+	m.MysqlErr = p.MysqlErr
 	return m
 }
 
