@@ -1,13 +1,10 @@
 package k8sclient
 
 import (
-	"flag"
-	"os"
-	"path/filepath"
-
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/klog"
+	"os"
 )
 
 func GetRestConfig() *rest.Config {
@@ -33,17 +30,13 @@ func InClusterAuth() (config *rest.Config) {
 func OutOfClusterAuth() (config *rest.Config) {
 
 	var err error
-	var kubeconfig *string
-	if home := homeDir(); home != "" {
-		kubeconfig = flag.String("kubeconfig",
-			filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
-	} else {
-		kubeconfig = flag.String("kubeconfig", "", "absolute path to the kubeconfig file")
+	kubeConifg := "/root/.kube/config"
+	if os.Getenv("KUBE_CONFIG") != "" {
+		kubeConifg = os.Getenv("KUBE_CONFIG")
 	}
-	flag.Parse()
 
 	// use the current context in kubeconfig
-	config, err = clientcmd.BuildConfigFromFlags("", *kubeconfig)
+	config, err = clientcmd.BuildConfigFromFlags("", kubeConifg)
 	if err != nil {
 		klog.Infoln(err.Error())
 		os.Exit(3)
