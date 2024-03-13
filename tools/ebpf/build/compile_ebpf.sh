@@ -30,6 +30,7 @@ DEFINES=(
     -DCONFIG_64BIT
     -DBUILD_FALCO_MODERN_BPF=True
     -D__BPF_TRACING__
+    -DCONFIG_IPV6=1
     -DKBUILD_MODNAME='"ebpf-agent"'
 )
 

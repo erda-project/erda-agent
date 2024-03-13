@@ -1,0 +1,373 @@
+#include <linux/skbuff.h>
+#include <linux/netfilter.h>
+#include <linux/netfilter/x_tables.h>
+#include <uapi/linux/tcp.h>
+#include <uapi/linux/udp.h>
+#include <uapi/linux/icmp.h>
+#include <uapi/linux/ipv6.h>
+#include <net/sock.h>
+#include <uapi/linux/ip.h>
+#include <bpf/bpf_core_read.h>
+#include <bpf/bpf_endian.h>
+
+#define XT_TABLE_MAXNAMELEN 32
+#define MAC_HEADER_SIZE 14
+
+#define NETFILTER_EVENT_IF 0x01
+#define SKBTRACER_EVENT_IPTABLE 0x02
+
+#define ADDRSIZE 16
+
+union addr {
+    u32 v4addr;
+    struct {
+        u64 pre;
+        u64 post;
+    } v6addr;
+    u64 pad[2];
+} __attribute__((packed));
+
+struct l2_info_t {
+    u8 dest_mac[6];
+    u16 l3_proto;
+} __attribute__((packed));
+
+struct l3_info_t {
+    union addr saddr;
+    union addr daddr;
+    u16 tot_len;
+    u8 ip_version;
+    u8 l4_proto;
+} __attribute__((packed));
+
+struct l4_info_t {
+    u16 sport;
+    u16 dport;
+    __be32 ack;
+    u16 tcpflags;
+    u8 pad[2];
+} __attribute__((packed));
+
+struct nf_tuple {
+    union addr src;
+    union addr dst;
+    u16 sport;
+    u16 dport;
+    union addr ori_src;
+    union addr ori_dst;
+    u16 ori_sport;
+    u16 ori_dport;
+} __attribute__((packed));
+
+struct icmp_info_t {
+    u16 icmpid;
+    u16 icmpseq;
+    u8 icmptype;
+    u8 pad[3];
+} __attribute__((packed));
+
+struct ipt_do_table_args_t {
+    u64 skb_ptr;
+    u64 state_ptr;
+    u64 table_ptr;
+    u64 start_ns;
+
+//    struct l3_info_t src_l3_info;
+//    struct l4_info_t src_l4_info;
+} __attribute__((packed));
+
+struct ipt_rcv_key_t {
+    union addr saddr;
+    u16 sport;
+} __attribute__((packed));
+
+struct ipt_rcv_args_t {
+    struct l3_info_t l3_info;
+    struct l4_info_t l4_info;
+} __attribute__((packed));
+
+struct pkt_info_t {
+    char ifname[IFNAMSIZ];
+    u32 len;
+    u32 cpu;
+    u32 pid;
+    u32 netns;
+    u8 pkt_type; // skb->pkt_type
+    u8 pad[3];
+} __attribute__((packed));
+
+struct nf_conn {
+	struct nf_conntrack ct_general;
+	spinlock_t lock;
+	u32 timeout;
+	struct nf_conntrack_tuple_hash tuplehash[2];
+	long unsigned int status;
+	possible_net_t ct_net;
+	struct hlist_node nat_bysource;
+	struct {} __nfct_init_offset;
+	struct nf_conn *master;
+	struct nf_ct_ext *ext;
+//	union nf_conntrack_proto proto;
+};
+
+struct nf_conn_info_t {
+     u64 conn_ptr;
+} __attribute__((packed));
+
+struct bpf_map_def SEC("maps/conn_maps") conn_maps = {
+    .type = BPF_MAP_TYPE_HASH,
+    .key_size = sizeof(u64),
+    .value_size = sizeof(struct nf_conn_info_t),
+    .max_entries = 1024 * 10,
+};
+
+struct bpf_map_def SEC("maps/ipt_maps") ipt_maps = {
+    .type = BPF_MAP_TYPE_HASH,
+    .key_size = sizeof(u64),
+    .value_size = sizeof(struct ipt_do_table_args_t),
+    .max_entries = 1024 * 10,
+};
+
+struct bpf_map_def SEC("maps/ipt_rcv_maps") ip_rcv_maps = {
+    .type = BPF_MAP_TYPE_HASH,
+    .key_size = sizeof(u64),
+    .value_size = sizeof(struct ipt_rcv_args_t),
+    .max_entries = 1024 * 10,
+};
+
+struct bpf_map_def SEC("maps/nf_conn_maps") nf_conn_maps = {
+    .type = BPF_MAP_TYPE_HASH,
+    .key_size = sizeof(u64),
+    .value_size = sizeof(struct nf_tuple),
+    .max_entries = 1024 * 10,
+};
+
+struct iptables_info_t {
+    char tablename[XT_TABLE_MAXNAMELEN];
+    u32 verdict;
+    u64 delay;
+    u8 hook;
+    u8 pf;
+    u8 pad[2];
+} __attribute__((packed));
+
+union ___skb_pkt_type {
+    u8 value;
+    struct {
+        u8 __pkt_type_offset[0];
+        u8 pkt_type : 3;
+        u8 pfmemalloc : 1;
+        u8 ignore_df : 1;
+
+        u8 nf_trace : 1;
+        u8 ip_summed : 2;
+    };
+};
+
+static __always_inline u8
+get_pkt_type(struct sk_buff *skb)
+{
+    union ___skb_pkt_type type = {};
+    bpf_probe_read(&type.value, 1, &skb->__pkt_type_offset);
+    return type.pkt_type;
+}
+
+struct event_t {
+    u64 skb;
+    u64 start_ns;
+    u8 flags;
+    u8 pad[3];
+
+    struct pkt_info_t pkt_info;
+    struct l2_info_t l2_info;
+    struct l3_info_t l3_info;
+    struct l4_info_t l4_info;
+    struct icmp_info_t icmp_info;
+    struct iptables_info_t ipt_info;
+//    struct l3_info_t src_l3_info;
+//    struct l4_info_t src_l4_info;
+} __attribute__((packed));
+
+//struct {
+//    __uint(type, BPF_MAP_TYPE_HASH);
+//    __type(key, u64);
+//    __type(value, struct event_t);
+//    __uint(max_entries, 1024);
+//} event_buf SEC(".maps");
+
+static __always_inline void
+set_event_info(struct sk_buff *skb, struct event_t *ev)
+{
+    ev->skb = (u64)skb;
+    ev->start_ns = bpf_ktime_get_ns();
+}
+
+static __always_inline u32
+get_netns(struct sk_buff *skb)
+{
+    u32 netns;
+
+    // Get netns inode. The code below is equivalent to: netns =
+    // skb->dev->nd_net.net->ns.inum
+    netns = BPF_CORE_READ(skb, dev, nd_net.net, ns.inum);
+
+    // maybe the skb->dev is not init, get it by
+    // skb->sk->__sk_common.skc_net.net->ns.inum.
+    if (netns == 0)
+        netns = BPF_CORE_READ(skb, sk, __sk_common.skc_net.net, ns.inum);
+
+    return netns;
+}
+
+static __always_inline u8
+get_ip_version(void *hdr)
+{
+    u8 first_byte;
+    bpf_probe_read(&first_byte, 1, hdr);
+    return (first_byte >> 4) & 0x0f;
+}
+
+static __always_inline u8
+get_ipv4_header_len(void *hdr)
+{
+    u8 first_byte;
+    bpf_probe_read(&first_byte, 1, hdr);
+    return (first_byte & 0x0f) * 4;
+}
+
+static __always_inline unsigned char *
+get_l2_header(struct sk_buff *skb)
+{
+    unsigned char *head = BPF_CORE_READ(skb, head);
+    u16 mac_header = BPF_CORE_READ(skb, mac_header);
+    return head + mac_header;
+}
+
+static __always_inline unsigned char *
+get_l3_header(struct sk_buff *skb)
+{
+    unsigned char *head = BPF_CORE_READ(skb, head);
+    u16 mac_header = BPF_CORE_READ(skb, mac_header);
+    u16 network_header = BPF_CORE_READ(skb, network_header);
+    if (network_header == 0)
+        network_header = mac_header + MAC_HEADER_SIZE;
+    return head + network_header;
+}
+
+static __always_inline unsigned char *
+get_l4_header(struct sk_buff *skb)
+{
+    u16 transport_size = 0;
+    unsigned char *l3_header = get_l3_header(skb);
+    u8 ip_version = get_ip_version(l3_header);
+    if (ip_version == 6)
+        transport_size = sizeof(struct ipv6hdr);
+    else
+        transport_size = get_ipv4_header_len(l3_header);
+    return l3_header + transport_size;
+}
+
+static __always_inline void
+set_ether_info(struct sk_buff *skb, struct l2_info_t *l2_info)
+{
+    unsigned char *l2_header = get_l2_header(skb);
+    bpf_probe_read(&l2_info->dest_mac, 6, l2_header);
+}
+
+static __always_inline void
+set_iptables_info(struct xt_table *table,
+    const struct nf_hook_state *state,
+    u64 delay,
+    struct iptables_info_t *ipt_info)
+{
+    bpf_probe_read(&ipt_info->tablename, XT_TABLE_MAXNAMELEN, &table->name);
+    BPF_PROBE_READ_INTO(&ipt_info->hook, state, hook);
+    BPF_PROBE_READ_INTO(&ipt_info->pf, state, pf);
+    ipt_info->delay = delay;
+}
+
+static __always_inline void
+set_ipv4_info(struct sk_buff *skb, struct l3_info_t *l3_info)
+{
+    struct iphdr *iph = (struct iphdr *)get_l3_header(skb);
+    l3_info->saddr.v4addr = BPF_CORE_READ(iph, saddr);
+    l3_info->daddr.v4addr = BPF_CORE_READ(iph, daddr);
+    l3_info->tot_len = bpf_ntohs(BPF_CORE_READ(iph, tot_len));
+    l3_info->l4_proto = BPF_CORE_READ(iph, protocol);
+    l3_info->ip_version = get_ip_version(iph);
+}
+
+static __always_inline void
+set_ipv6_info(struct sk_buff *skb, struct l3_info_t *l3_info)
+{
+    struct ipv6hdr *iph = (struct ipv6hdr *)get_l3_header(skb);
+    bpf_probe_read(&l3_info->saddr.v6addr, ADDRSIZE, &iph->saddr);
+    bpf_probe_read(&l3_info->daddr.v6addr, ADDRSIZE, &iph->daddr);
+    l3_info->tot_len = bpf_ntohs(BPF_CORE_READ(iph, payload_len));
+    l3_info->l4_proto = BPF_CORE_READ(iph, nexthdr);
+    l3_info->ip_version = get_ip_version(iph);
+}
+
+static __always_inline void
+set_pkt_info(struct sk_buff *skb, struct pkt_info_t *pkt_info)
+{
+    struct net_device *dev = BPF_CORE_READ(skb, dev);
+    pkt_info->len = BPF_CORE_READ(skb, len);
+    pkt_info->cpu = bpf_get_smp_processor_id();
+    pkt_info->pid = bpf_get_current_pid_tgid() & 0xffff;
+    pkt_info->netns = get_netns(skb);
+    pkt_info->pkt_type = get_pkt_type(skb);
+
+    pkt_info->ifname[0] = 0;
+    bpf_probe_read(&pkt_info->ifname, IFNAMSIZ, &dev->name);
+    if (pkt_info->ifname[0] == 0) {
+        pkt_info->ifname[0] = 'n';
+        pkt_info->ifname[1] = 'i';
+        pkt_info->ifname[2] = 'l';
+        pkt_info->ifname[3] = 0;
+    }
+}
+
+static __always_inline void
+set_tcp_info(struct sk_buff *skb, struct l4_info_t *l4_info)
+{
+    struct tcphdr *tcph = (struct tcphdr *)get_l4_header(skb);
+    l4_info->sport = bpf_ntohs(BPF_CORE_READ(tcph, source));
+    l4_info->dport = bpf_ntohs(BPF_CORE_READ(tcph, dest));
+    __be32 ack = BPF_CORE_READ(tcph, seq);
+    l4_info->ack = ack;
+//    bpf_printk("dport: %d, ack: %d\n", l4_info->dport, ack);
+    bpf_probe_read(&l4_info->tcpflags, 2, (char *)tcph + 12);
+}
+
+static __always_inline void
+set_tcp_info_ack(struct sk_buff *skb, struct l4_info_t *l4_info)
+{
+    struct tcphdr *tcph = (struct tcphdr *)get_l4_header(skb);
+    l4_info->sport = bpf_ntohs(BPF_CORE_READ(tcph, source));
+    l4_info->dport = bpf_ntohs(BPF_CORE_READ(tcph, dest));
+    u32 ack = BPF_CORE_READ(tcph, ack_seq);
+    l4_info->ack = ack;
+//    bpf_printk("dport: %d, ack: %d\n", l4_info->dport, ack);
+    bpf_probe_read(&l4_info->tcpflags, 2, (char *)tcph + 12);
+}
+
+static __always_inline void
+set_udp_info(struct sk_buff *skb, struct l4_info_t *l4_info)
+{
+    struct udphdr *uh = (struct udphdr *)get_l4_header(skb);
+    l4_info->sport = bpf_ntohs(BPF_CORE_READ(uh, source));
+    l4_info->dport = bpf_ntohs(BPF_CORE_READ(uh, dest));
+}
+
+static __always_inline void
+set_icmp_info(struct sk_buff *skb, struct icmp_info_t *icmp_info)
+{
+    struct icmphdr ih;
+    unsigned char *l4_header = get_l4_header(skb);
+    bpf_probe_read(&ih, sizeof(ih), l4_header);
+
+    icmp_info->icmptype = ih.type;
+    icmp_info->icmpid = bpf_ntohs(ih.un.echo.id);
+    icmp_info->icmpseq = bpf_ntohs(ih.un.echo.sequence);
+}

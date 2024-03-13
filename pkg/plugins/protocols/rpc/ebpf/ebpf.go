@@ -148,6 +148,9 @@ func (e *Ebpf) Load(spec *ebpf.CollectionSpec) error {
 					panic(err)
 				}
 				e.Ch <- *metric
+				//if metric.RpcType != RPC_TYPE_MYSQL {
+				//	klog.Infof("metric: %v", metric.CovertMetric())
+				//}
 			}
 			time.Sleep(1 * time.Second)
 		}
