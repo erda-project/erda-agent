@@ -2,22 +2,18 @@ package ebpf
 
 import (
 	"bytes"
-	"encoding/binary"
 	"fmt"
-	"github.com/cilium/ebpf"
-	"github.com/cilium/ebpf/link"
 	"io"
-	"k8s.io/klog/v2"
-	"net"
-	"time"
+
+	"github.com/cilium/ebpf"
 )
 
-func RunEbpf() {
+func RunEbpf() *NetfilterObjects {
 	spec, err := loadNetfilter()
 	if err != nil {
 		panic(err)
 	}
-	var bpfObj netfilterObjects
+	var bpfObj NetfilterObjects
 	if err := spec.LoadAndAssign(&bpfObj, &ebpf.CollectionOptions{
 		Programs: ebpf.ProgramOptions{
 			LogSize: ebpf.DefaultVerifierLogSize * 10,
@@ -25,86 +21,7 @@ func RunEbpf() {
 	}); err != nil {
 		panic(err)
 	}
-
-	//kpIpForward, err := link.Kprobe("ip_forward", bpfObj.K_ipFroward, nil)
-	//if err != nil {
-	//	panic(err)
-	//}
-	//defer kpIpForward.Close()
-	//
-	//krpIpForward, err := link.Kretprobe("ip_forward", bpfObj.Kr_ipFroward, nil)
-	//if err != nil {
-	//	panic(err)
-	//}
-	//defer krpIpForward.Close()
-
-	kp, err := link.Kprobe("ipt_do_table", bpfObj.K_iptDoTable, nil)
-	if err != nil {
-		panic(err)
-	}
-	defer kp.Close()
-
-	krp, err := link.Kretprobe("ipt_do_table", bpfObj.KrIptDoTable, nil)
-	if err != nil {
-		panic(err)
-	}
-	defer krp.Close()
-
-	kpNat, err := link.Kprobe("nf_nat_setup_info", bpfObj.K_natSetUpInfo, nil)
-	if err != nil {
-		panic(err)
-	}
-	defer kpNat.Close()
-
-	krpNat, err := link.Kretprobe("nf_nat_setup_info", bpfObj.Kr_natSetUpInfo, nil)
-	if err != nil {
-		panic(err)
-	}
-	defer krpNat.Close()
-
-	go func() {
-		for {
-			var (
-				key uint64
-				val []byte
-			)
-			for bpfObj.netfilterMaps.NfConnBuf.Iterate().Next(&key, &val) {
-				if err := bpfObj.netfilterMaps.NfConnBuf.Delete(key); err != nil {
-					panic(err)
-				}
-				var event connEvent
-				if err := binary.Read(bytes.NewReader(val), binary.LittleEndian, &event); err != nil {
-					klog.Warningf("failed to decode event: %v", err)
-					continue
-				}
-				if event.Sport == 9095 || event.Dport == 9095 || event.Sport == 9529 || event.Dport == 9529 {
-					klog.Infof("original srcIP: %s, original srcPort: %d, original dstIP: %s, original dstPort: %d, reply srcIP: %s, reply srcPort: %d, reply dstIP: %s, reply dstPort: %d",
-						net.IP(event.OriSrc[:4]), event.OriSport, net.IP(event.OriDst[:4]), event.OriDport, net.IP(event.Src[:4]), event.Sport, net.IP(event.Dst[:4]), event.Dport)
-				}
-			}
-		}
-	}()
-
-	for {
-		var (
-			key uint64
-			val []byte
-		)
-		for bpfObj.netfilterMaps.EventBuf.Iterate().Next(&key, &val) {
-			if err := bpfObj.netfilterMaps.EventBuf.Delete(key); err != nil {
-				panic(err)
-			}
-			var event perfEvent
-			if err := binary.Read(bytes.NewReader(val), binary.LittleEndian, &event); err != nil {
-				klog.Warningf("failed to decode event: %v", err)
-				continue
-			}
-			if event.Sport == 9095 || event.Dport == 9095 || event.Sport == 9529 || event.Dport == 9529 {
-				klog.Infof(event.output())
-			}
-		}
-		time.Sleep(100 * time.Millisecond)
-	}
+	return &bpfObj
 }
 
 func _NetfilterClose(closers ...io.Closer) error {
@@ -156,12 +73,12 @@ type netfilterMapSpecs struct {
 	NfConnBuf  *ebpf.MapSpec `ebpf:"nf_conn_maps"`
 }
 
-type netfilterObjects struct {
+type NetfilterObjects struct {
 	netfilterPrograms
 	netfilterMaps
 }
 
-func (o *netfilterObjects) Close() error {
+func (o *NetfilterObjects) Close() error {
 	return _NetfilterClose(
 		&o.netfilterPrograms,
 		&o.netfilterMaps,

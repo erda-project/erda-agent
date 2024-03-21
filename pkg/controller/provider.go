@@ -52,11 +52,6 @@ func (p *provider) Run(ctx context.Context) error {
 	for _, plugin := range p.plugins {
 		go plugin.Gather(ch)
 	}
-	//influxAddr := os.Getenv("INFLUX_ADDR")
-	//influxOrg := os.Getenv("INFLUX_ORG")
-	//influxBucket := os.Getenv("INFLUX_BUCKET")
-	//influxToken := os.Getenv("INFLUX_TOKEN")
-	//influxdb := influxdb.NewInfluxdb(influxAddr, influxOrg, influxBucket, influxToken).Run()
 	for {
 		select {
 		case m := <-ch:
@@ -70,7 +65,6 @@ func (p *provider) Run(ctx context.Context) error {
 				}
 				//klog.Infof("send metric to collector success")
 			}
-			//influxdb.Write(m)
 		}
 	}
 	return nil

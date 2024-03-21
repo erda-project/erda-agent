@@ -78,6 +78,14 @@ int kretprobe_nf_nat_setup_info(uint ret) {
     struct nf_conntrack_tuple replyTuple;
     BPF_PROBE_READ_INTO(&originTuple, conn, tuplehash[IP_CT_DIR_ORIGINAL].tuple);
     BPF_PROBE_READ_INTO(&replyTuple, conn, tuplehash[IP_CT_DIR_REPLY].tuple);
+    // ignore dns
+    if (originTuple.src.u.tcp.port == 53 || bpf_ntohs(originTuple.dst.u.tcp.port) == 53) {
+        return 0;
+    }
+    // ignore same ip
+    if (originTuple.dst.u3.ip == replyTuple.src.u3.ip) {
+        return 0;
+    }
     struct nf_tuple conn_ev = {
         .sport = bpf_ntohs(replyTuple.src.u.tcp.port),
         .dport = bpf_ntohs(replyTuple.dst.u.tcp.port),
@@ -233,9 +241,6 @@ int kretprobe_ipt_do_table(uint ret) {
 //    event.src_l3_info = rcv_args->l3_info;
 //    event.src_l4_info = rcv_args->l4_info;
     bpf_map_update_elem(&event_buf, &pid_tgid, &event, BPF_ANY);
-    if (event.l4_info.dport == 30810 || event.l4_info.dport == 3081 || event.l4_info.dport == 9529 || event.l4_info.dport == 9095){
-        bpf_printk("forward daddr: %d\n",  event.l3_info.daddr.v4addr);
-    }
     return 0;
 }
 

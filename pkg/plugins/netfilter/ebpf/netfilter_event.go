@@ -141,7 +141,7 @@ type perfEvent struct {
 	iptablesInfo
 }
 
-type connEvent struct {
+type ConnEvent struct {
 	Src      [16]byte
 	Dst      [16]byte
 	Sport    uint16
