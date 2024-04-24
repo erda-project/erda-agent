@@ -5,6 +5,7 @@
 #include "../../include/common.h"
 #include "../../include/sock.h"
 #include "../../include/protocol.h"
+#include "../../include/redis.h"
 
 struct bpf_map_def SEC("maps/package_map") grpc_trace_map = {
   	.type = BPF_MAP_TYPE_HASH,
@@ -59,6 +60,8 @@ int rpc__filter_package(struct __sk_buff *skb)
         pkg.rpc_type = PAYLOAD_DUBBO;
     } else if (is_mysql(buf, buffer.size, &skb_info, &pkg)) {
         pkg.rpc_type = PAYLOAD_MYSQL;
+    } else if (is_redis(buf, buffer.size, &skb_info, &pkg)) {
+        pkg.rpc_type = PAYLOAD_REDIS;
     } else {
         rpc_status_t status = judge_rpc(skb, &skb_info, &pkg);
         if (status != PAYLOAD_GRPC) {

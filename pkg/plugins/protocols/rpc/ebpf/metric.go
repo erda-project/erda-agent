@@ -29,6 +29,8 @@ const (
 	RPC_TYPE_GRPC RpcType = "GRPC"
 	// RPC_TYPE_MYSQL mysql
 	RPC_TYPE_MYSQL RpcType = "MYSQL"
+	// RPC_TYPE_REDIS redis
+	RPC_TYPE_REDIS RpcType = "REDIS"
 )
 
 type MapPackage struct {
@@ -115,7 +117,7 @@ func DecodeMapItem(e []byte) *MapPackage {
 			m.Path = string(e[41 : m.PathLen+41+1])
 		}
 	}
-	if m.RpcType == 4 {
+	if m.RpcType == 4 || m.RpcType == 5 {
 		m.Path = string(e[41:121])
 	}
 	// dubbo path
@@ -146,6 +148,14 @@ func DecodeMapItem(e []byte) *MapPackage {
 	m.Status, err = encodeHeader(e[141:142])
 	if err != nil {
 		klog.Errorf("encode status header error: %v", err)
+	}
+	if m.RpcType == 5 {
+		if e[141] == 'O' {
+			m.Status = "OK"
+		}
+		if e[141] == 'E' {
+			m.Status = "ERROR"
+		}
 	}
 	// dubbo status
 	if m.RpcType == 3 {

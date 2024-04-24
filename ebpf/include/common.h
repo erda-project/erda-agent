@@ -1,3 +1,9 @@
+// Redis
+#define REDIS_MIN_FRAME_LENGTH 3
+#define REDIS_MAX_COMMAND_LENGTH 10
+
+#define MAX_HTTP2_PATH_CONTENT_LENGTH 100
+#define MAX_HTTP2_STATUS_HEADER_LENGTH 1
 
 #define bpf_printk(fmt, ...)                                    \
 ({                                                              \
