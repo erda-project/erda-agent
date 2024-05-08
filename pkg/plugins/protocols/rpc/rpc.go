@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -21,6 +22,7 @@ const (
 	rpcMeasurementGroup      = "application_rpc"
 	rpcErrorMeasurementGroup = rpcMeasurementGroup + "_error"
 	dbMeasurementGroup       = "application_db"
+	redisMeasurementGroup    = "application_redis"
 	dbErrorMeasurementGroup  = dbMeasurementGroup + "_error"
 )
 
@@ -49,13 +51,6 @@ func (p *provider) Gather(c chan metric.Metric) {
 	if err != nil {
 		panic(err)
 	}
-	//proj := rpcebpf.NewEbpf(5, "172.18.0.2", p.ch)
-	//if err := proj.Load(spec); err != nil {
-	//	log.Fatalf("failed to load ebpf, err: %v", err)
-	//}
-	//p.Lock()
-	//p.rpcProbes[2] = proj
-	//p.Unlock()
 	vethes, err := p.kprobeHelper.GetVethes()
 	if err != nil {
 		panic(err)
@@ -112,6 +107,10 @@ func (p *provider) sendMetrics(c chan metric.Metric) {
 				continue
 			}
 			mc := p.convertRpc2Metric(&m)
+			// ignore redis ping
+			if mc.Name == redisMeasurementGroup && strings.ToLower(mc.Tags["redis_command"]) == "ping" {
+				continue
+			}
 			c <- mc
 			klog.Infof("rpc metric: %+v", mc)
 		}
@@ -136,6 +135,8 @@ func (p *provider) convertRpc2Metric(m *rpcebpf.Metric) metric.Metric {
 	case rpcebpf.RPC_TYPE_MYSQL:
 		res.Name, res.Measurement = dbMeasurementGroup, dbMeasurementGroup
 		res.Tags["db_statement"] = m.Path
+	case rpcebpf.RPC_TYPE_REDIS:
+		res.Name, res.Measurement = redisMeasurementGroup, redisMeasurementGroup
 	default:
 
 	}
@@ -152,9 +153,11 @@ func (p *provider) convertRpc2Metric(m *rpcebpf.Metric) metric.Metric {
 	res.Tags["_metric_scope"] = "micro_service"
 	res.Tags["span_kind"] = "server"
 	res.Tags["rpc_type"] = string(m.RpcType)
-	res.Tags["method"] = m.Path
 	res.Tags["peer_address"] = fmt.Sprintf("%s:%d", m.DstIP, m.DstPort)
-	res.Tags["peer_service"] = m.Path
+	if m.RpcType != rpcebpf.RPC_TYPE_REDIS {
+		res.Tags["peer_service"] = m.Path
+		res.Tags["method"] = m.Path
+	}
 	res.Tags["component"] = string(m.RpcType)
 	res.Tags["db_host"] = fmt.Sprintf("%s:%d", m.SrcIP, m.SrcPort)
 	var rpcTarget, rpcMethod, rpcService, rpcVersion, serviceVersion string
@@ -166,6 +169,17 @@ func (p *provider) convertRpc2Metric(m *rpcebpf.Metric) metric.Metric {
 		rpcService = parseLine[2]
 		rpcVersion = parseLine[1]
 		serviceVersion = parseLine[3]
+	}
+	if m.RpcType == rpcebpf.RPC_TYPE_REDIS {
+		protocolList := strings.Split(m.Path, "\r\n")
+		if len(protocolList) >= 3 {
+			res.Tags["redis_command"] = protocolList[2]
+		}
+		if len(protocolList) >= 5 {
+			res.Tags["redis_args"] = protocolList[4]
+		}
+		res.Tags["redis_staus"] = m.Status
+		res.Tags["redis_sql"] = res.Tags["redis_command"] + " " + res.Tags["redis_args"]
 	}
 	res.Tags["rpc_target"] = rpcTarget
 	if m.RpcType == rpcebpf.RPC_TYPE_DUBBO {

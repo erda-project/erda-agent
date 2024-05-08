@@ -20,6 +20,7 @@ typedef enum {
     PAYLOAD_NOT_GRPC,
     PAYLOAD_DUBBO,
     PAYLOAD_MYSQL,
+    PAYLOAD_REDIS,
 } rpc_status_t;
 
 enum dubbo_phase {
@@ -36,9 +37,6 @@ enum eth_ip_type {
     ETH_TYPE_IPV4 = 0,
     ETH_TYPE_IPV6 = 1,
 };
-
-#define MAX_HTTP2_PATH_CONTENT_LENGTH 100
-#define MAX_HTTP2_STATUS_HEADER_LENGTH 1
 
 #define MYSQL_ERROR_MESSAGE_MAX_SIZE 10
 

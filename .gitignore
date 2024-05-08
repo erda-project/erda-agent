@@ -21,3 +21,5 @@
 
 # Compiled eBPF programs
 target/
+
+cmd/local
