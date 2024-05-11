@@ -10,6 +10,8 @@ rpc:
 
 netfilter:
 
+kafka:
+
 
 agent.controller:
   plugins:
@@ -18,3 +20,4 @@ agent.controller:
     - kprobe
     - traffic
     - netfilter
+    - kafka
