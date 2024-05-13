@@ -21,6 +21,7 @@ typedef enum {
     PAYLOAD_DUBBO,
     PAYLOAD_MYSQL,
     PAYLOAD_REDIS,
+    PAYLOAD_KAFKA,
 } rpc_status_t;
 
 enum dubbo_phase {
@@ -381,14 +382,14 @@ static __always_inline void __init_buffer(struct __sk_buff *skb, skb_info_t *skb
     buffer->size = payload_length < CLASSIFICATION_MAX_BUFFER ? payload_length : CLASSIFICATION_MAX_BUFFER;
 }
 
-static inline int ip_is_fragment(struct __sk_buff *skb, __u32 nhoff)
-{
-    __u16 frag_off;
-
-    bpf_skb_load_bytes(skb, nhoff + offsetof(struct iphdr, frag_off), &frag_off, 2);
-    frag_off = __bpf_ntohs(frag_off);
-    return frag_off & (IP_MF | IP_OFFSET);
-}
+//static inline int ip_is_fragment(struct __sk_buff *skb, __u32 nhoff)
+//{
+//    __u16 frag_off;
+//
+//    bpf_skb_load_bytes(skb, nhoff + offsetof(struct iphdr, frag_off), &frag_off, 2);
+//    frag_off = __bpf_ntohs(frag_off);
+//    return frag_off & (IP_MF | IP_OFFSET);
+//}
 
 static __always_inline void skip_literal_header(const struct __sk_buff *skb, skb_info_t *skb_info, __u32 frame_end, __u8 idx) {
     string_literal_header len;
