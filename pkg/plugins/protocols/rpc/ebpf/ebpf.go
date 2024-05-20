@@ -77,6 +77,12 @@ func (e *Ebpf) Load(spec *ebpf.CollectionSpec) error {
 		return errors.New(msg)
 	}
 
+	amqpFilterProg := e.collection.DetachProgram("socket__amqp_filter")
+	if amqpFilterProg == nil {
+		msg := fmt.Sprintf("Error: no program named %s found !", "socket__amqp_filter")
+		return errors.New(msg)
+	}
+
 	e.tcpSendMsgProg = e.collection.DetachProgram("kprobe_tcp_sendmsg")
 	if e.tcpSendMsgProg == nil {
 		msg := fmt.Sprintf("Error: no program named %s found !", "kprobe_tcp_sendmsg")
@@ -126,6 +132,12 @@ func (e *Ebpf) Load(spec *ebpf.CollectionSpec) error {
 		return err
 	}
 
+	// register tail call
+	tailCallMap := e.collection.DetachMap("tail_jmp_map")
+	if err := tailCallMap.Update(uint32(1), uint32(amqpFilterProg.FD()), ebpf.UpdateAny); err != nil {
+		return fmt.Errorf("failed to update tail call map: %v", err)
+	}
+
 	if err := syscall.SetsockoptInt(sock, syscall.SOL_SOCKET, SO_ATTACH_BPF, prog.FD()); err != nil {
 		return err
 	}
@@ -151,6 +163,23 @@ func (e *Ebpf) Load(spec *ebpf.CollectionSpec) error {
 				//if metric.RpcType != RPC_TYPE_MYSQL {
 				//	klog.Infof("metric: %v", metric.CovertMetric())
 				//}
+			}
+			time.Sleep(1 * time.Second)
+		}
+	}()
+	go func() {
+		m := e.collection.DetachMap("amqp_trace_map")
+		var (
+			key uint32
+			val []byte
+		)
+		for {
+			for m.Iterate().Next(&key, &val) {
+				if err := m.Delete(key); err != nil {
+					panic(err)
+				}
+				ev := DecodeAMQPMapItem(val)
+				klog.Infof("length: %d, amqp: %v", len(val), ev)
 			}
 			time.Sleep(1 * time.Second)
 		}

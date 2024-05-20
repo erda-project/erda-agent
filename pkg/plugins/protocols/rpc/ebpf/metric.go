@@ -33,6 +33,13 @@ const (
 	RPC_TYPE_REDIS RpcType = "REDIS"
 )
 
+type AMQPBasicType string
+
+const (
+	AMQP_BASIC_PUBLISH AMQPBasicType = "PUBLISH"
+	AMQP_BASIC_CONSUME AMQPBasicType = "CONSUME"
+)
+
 type MapPackage struct {
 	//DUBBO, GRPC etc.
 	RpcType      uint32
@@ -49,6 +56,18 @@ type MapPackage struct {
 	Path         string
 	Status       string
 	MysqlErr     string
+}
+
+type AMQPMapPackage struct {
+	DstIP     string
+	DstPort   uint16
+	SrcIP     string
+	SrcPort   uint16
+	Queue     string
+	Exchange  string
+	BasicType AMQPBasicType
+	Count     uint32
+	Duration  uint32
 }
 
 type Metric struct {
@@ -170,6 +189,26 @@ func DecodeMapItem(e []byte) *MapPackage {
 		m.MysqlErr = string(e[146:])
 	}
 	return m
+}
+
+func DecodeAMQPMapItem(e []byte) *AMQPMapPackage {
+	m := new(AMQPMapPackage)
+	m.DstIP = net.IP(e[0:4]).String()
+	m.DstPort = binary.BigEndian.Uint16(e[4:8])
+	m.SrcIP = net.IP(e[8:12]).String()
+	m.SrcPort = binary.BigEndian.Uint16(e[12:16])
+	m.Queue = string(e[16:26])
+	m.Exchange = string(e[26:36])
+	basicType := binary.LittleEndian.Uint32(e[36:40])
+	if basicType == 1 {
+		m.BasicType = AMQP_BASIC_PUBLISH
+	} else if basicType == 2 {
+		m.BasicType = AMQP_BASIC_CONSUME
+	}
+	m.Count = binary.LittleEndian.Uint32(e[40:44])
+	m.Duration = binary.LittleEndian.Uint32(e[44:48])
+	return m
+
 }
 
 func encodeHeader(source []byte) (string, error) {

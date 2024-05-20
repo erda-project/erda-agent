@@ -22,6 +22,7 @@ typedef enum {
     PAYLOAD_MYSQL,
     PAYLOAD_REDIS,
     PAYLOAD_KAFKA,
+    PAYLOAD_AMQP,
 } rpc_status_t;
 
 enum dubbo_phase {
@@ -102,7 +103,7 @@ struct rpc_package_t {
 
 #define SQL_COMMAND_MAX_SIZE 6
 #define MYSQL_RESPONSE_MAX_SIZE 10
-#define MYSQL_QUERY_MAX_SIZE 30
+#define MYSQL_QUERY_MAX_SIZE 10
 
 #define SQL_ALTER "ALTER"
 #define SQL_CREATE "CREATE"

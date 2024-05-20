@@ -6,12 +6,20 @@
 #include "../../include/sock.h"
 #include "../../include/protocol.h"
 #include "../../include/redis.h"
+#include "../../include/amqp.h"
 
 struct bpf_map_def SEC("maps/package_map") grpc_trace_map = {
   	.type = BPF_MAP_TYPE_HASH,
 	.key_size = sizeof(__u32),
 	.value_size = sizeof(struct rpc_package_t),
 	.max_entries = 1024 * 10,
+};
+
+struct bpf_map_def SEC("maps/package_map") amqp_trace_map = {
+  	.type = BPF_MAP_TYPE_HASH,
+    .key_size = sizeof(__u32),
+    .value_size = sizeof(struct amqp_trace),
+    .max_entries = 1024,
 };
 
 struct bpf_map_def SEC("maps/package_map") grpc_request_map = {
@@ -26,6 +34,13 @@ struct bpf_map_def SEC("maps/package_map") filter_map = {
     .key_size = sizeof(__u32),
     .value_size = sizeof(__u64),
     .max_entries = 1,
+};
+
+struct bpf_map_def SEC("maps/package_map") tail_jmp_map = {
+  	.type = BPF_MAP_TYPE_PROG_ARRAY,
+	.key_size = sizeof(__u32),
+	.value_size = sizeof(u32),
+	.max_entries = 16,
 };
 
 int __get_target_ip() {
@@ -62,6 +77,9 @@ int rpc__filter_package(struct __sk_buff *skb)
         pkg.rpc_type = PAYLOAD_MYSQL;
     } else if (is_redis(buf, buffer.size, &skb_info, &pkg)) {
         pkg.rpc_type = PAYLOAD_REDIS;
+    }  else if (is_amqp(&skb_tup, buf, buffer.size)) {
+        bpf_tail_call(skb, &tail_jmp_map, PROG_AMQP_FILTER);
+        return 0;
     } else {
         rpc_status_t status = judge_rpc(skb, &skb_info, &pkg);
         if (status != PAYLOAD_GRPC) {
@@ -128,6 +146,80 @@ int rpc__filter_package(struct __sk_buff *skb)
         return -1;
     }
 
+    return 0;
+}
+
+SEC("socket/amqp_filter")
+int socket__amqp_filter(struct __sk_buff* skb) {
+    skb_info_t skb_info = {0};
+    conn_tuple_t skb_tup = {0};
+    if (!read_conn_tuple_skb(skb, &skb_info, &skb_tup)) {
+        return 0;
+    }
+    amqp_data *data = bpf_map_lookup_elem(&amqp_filter_map, &skb_tup);
+    if (!data) {
+        return 0;
+    }
+
+    struct amqp_trace pkg = {0};
+    switch (data->hdr.class_id) {
+    case AMPQ_QUEUE_CLASS:
+        switch (data->hdr.method_id) {
+        case AMQP_METHOD_BIND:
+            bpf_skb_load_bytes(skb, skb_info.data_off+sizeof(amqp_header)+2, data->event.queue, AMQP_QUEUE_MAX_LENGTH);
+        }
+    case AMQP_BASIC_CLASS:
+        switch (data->hdr.method_id) {
+        case AMQP_METHOD_PUBLISH:
+            data->event.type = AMQP_PUBLISH;
+            bpf_skb_load_bytes(skb, skb_info.data_off+sizeof(amqp_header)+2, data->event.exchange, AMQP_QUEUE_MAX_LENGTH);
+        case AMQP_METHOD_CONSUME:
+            if (data->event.type != AMQP_PUBLISH) {
+                data->event.type = AMQP_CONSUME;
+            }
+        case AMQP_METHOD_DELIVER:
+            data->event.count += 1;
+        default:
+            break;
+        }
+    case AMQP_CONNECTION_CLASS:
+        switch (data->hdr.method_id) {
+        case AMQP_METHOD_CONNECTION_START_OK:
+            data->event.duration = bpf_ktime_get_ns();
+        case AMQP_METHOD_CONNECTION_CLOSE:
+        case AMQP_METHOD_CONNECTION_CLOSE_OK:
+            if (skb_tup.l3_proto == ETH_P_IP) {
+                pkg.srcIP = skb_tup.saddr_l;
+                pkg.dstIP = skb_tup.daddr_l;
+            } else if (skb_tup.l3_proto == ETH_P_IPV6) {
+                pkg.srcIP = skb_tup.saddr_h;
+                pkg.dstIP = skb_tup.daddr_h;
+            } else {
+                return 0;
+            }
+            pkg.dstPort = bpf_ntohs(skb_tup.dport);
+            pkg.srcPort = bpf_ntohs(skb_tup.sport);
+            data->event.duration = bpf_ktime_get_ns() - data->event.duration;
+            pkg.event.type = data->event.type;
+            pkg.event.count = data->event.count;
+            pkg.event.duration = data->event.duration;
+            for (int i = 0; i < AMQP_QUEUE_MAX_LENGTH; i++) {
+                pkg.event.exchange[i] = data->event.exchange[i];
+                pkg.event.queue[i] = data->event.queue[i];
+            }
+            if (pkg.event.type != AMQP_UNKNOWN) {
+                bpf_map_update_elem(&amqp_trace_map, &skb_info.tcp_seq, &pkg, BPF_ANY);
+                bpf_map_delete_elem(&amqp_filter_map, &skb_tup);
+            }
+            bpf_printk("amqp type: %d", pkg.event.type);
+            bpf_printk("exchange bind: %s", pkg.event.exchange);
+            bpf_printk("queue bind: %s", pkg.event.queue);
+            bpf_printk("count: %d", pkg.event.count);
+            bpf_printk("duration: %lld", pkg.event.duration);
+        default:
+            break;
+        }
+    }
     return 0;
 }
 char _license[] SEC("license") = "GPL";
