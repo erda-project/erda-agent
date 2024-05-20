@@ -168,7 +168,7 @@ int kprobe_tcp_sendmsg(struct pt_regs *ctx) {
             if (iovec_ptr) {
                   handle_tcp_connection(&info, iovec_ptr, size);
             } else {
-                bpf_printk("can't find iovec ptr in msghdr, not tracking sendmsg\n");
+//                bpf_printk("can't find iovec ptr in msghdr, not tracking sendmsg\n");
             }
         }
     }
