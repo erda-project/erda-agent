@@ -5,6 +5,8 @@
 # Files for ideas
 .idea/*
 *.iml
+.run
+.vscode
 
 # Files for vim
 .*.sw?

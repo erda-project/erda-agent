@@ -3,13 +3,14 @@ package controller
 import (
 	"log"
 
+	corev1 "k8s.io/api/core/v1"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
+
 	"github.com/erda-project/ebpf-agent/metric"
 	"github.com/erda-project/ebpf-agent/pkg/criruntime"
 	"github.com/erda-project/ebpf-agent/pkg/k8sclient"
 	"github.com/erda-project/ebpf-agent/pkg/plugins/kprobe/kprobesysctl"
-	corev1 "k8s.io/api/core/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 )
 
 type Controller struct {
@@ -63,4 +64,8 @@ func (c *Controller) GetSysctlStat(pid uint32) (kprobesysctl.SysctlStat, error) 
 
 func (c *Controller) GetPodByUID(podUID string) (corev1.Pod, error) {
 	return c.sysctlController.GetPodByUID(podUID)
+}
+
+func (c *Controller) GetService(ip string) (corev1.Service, error) {
+	return c.sysctlController.GetService(ip)
 }

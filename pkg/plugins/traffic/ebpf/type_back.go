@@ -13,6 +13,14 @@ import (
 	"github.com/erda-project/ebpf-agent/metric"
 )
 
+type ConnInfo struct {
+	Saddr net.IP
+	Daddr net.IP
+	Sport uint16
+	Dport uint16
+	Proto uint8
+}
+
 type MapPackage struct {
 	//HTTP, RPC, MySQL etc.
 	Type     uint32
@@ -54,7 +62,7 @@ type Metric struct {
 
 func (m *Metric) CovertMetric() metric.Metric {
 	var metric metric.Metric
-	metric.Measurement = "traffic"
+	metric.Measurement = "http"
 	metric.AddTags("podname", m.PodName)
 	metric.AddTags("nodename", m.NodeName)
 	metric.AddTags("namespace", m.NameSpace)

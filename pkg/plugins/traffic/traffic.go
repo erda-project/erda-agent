@@ -4,12 +4,13 @@ import (
 	"strconv"
 	"time"
 
+	"k8s.io/klog"
+
 	"github.com/erda-project/ebpf-agent/metric"
 	"github.com/erda-project/ebpf-agent/pkg/plugins/traffic/controller"
 	"github.com/erda-project/ebpf-agent/pkg/plugins/traffic/ebpf"
 	"github.com/erda-project/ebpf-agent/pkg/plugins/traffic/red"
 	"github.com/erda-project/erda-infra/base/servicehub"
-	"k8s.io/klog"
 )
 
 type provider struct {
@@ -66,9 +67,9 @@ func (p *provider) Gather(c chan metric.Metric) {
 }
 
 func init() {
-	servicehub.Register("traffic", &servicehub.Spec{
-		Services:     []string{"traffic"},
-		Description:  "ebpf for traffic",
+	servicehub.Register("http", &servicehub.Spec{
+		Services:     []string{"http"},
+		Description:  "ebpf for http",
 		Dependencies: []string{},
 		Creator: func() servicehub.Provider {
 			return &provider{}

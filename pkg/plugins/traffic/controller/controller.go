@@ -10,8 +10,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/erda-project/ebpf-agent/pkg/k8sclient"
-	"github.com/erda-project/ebpf-agent/pkg/plugins/traffic/ebpf"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/util/runtime"
@@ -21,6 +19,10 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/cache"
 	"k8s.io/client-go/tools/remotecommand"
+
+	"github.com/erda-project/ebpf-agent/pkg/k8sclient"
+	ebpf2 "github.com/erda-project/ebpf-agent/pkg/plugins/protocols/http/ebpf"
+	"github.com/erda-project/ebpf-agent/pkg/plugins/traffic/ebpf"
 )
 
 type Controller struct {
@@ -29,7 +31,7 @@ type Controller struct {
 	Clientset *kubernetes.Clientset
 	Config    *rest.Config
 	Ch        chan ebpf.Metric
-	Ebpfs     map[int]*ebpf.Ebpf
+	Ebpfs     map[int]*ebpf2.provider
 }
 
 func NewController(ch chan ebpf.Metric) *Controller {
@@ -42,7 +44,7 @@ func NewController(ch chan ebpf.Metric) *Controller {
 		Clientset: clientset,
 		Config:    config,
 		Ch:        ch,
-		Ebpfs:     make(map[int]*ebpf.Ebpf),
+		Ebpfs:     make(map[int]*ebpf2.provider),
 	}
 
 }
@@ -118,8 +120,7 @@ func (c *Controller) addAndUpdate(new *corev1.Endpoints, nodename string) {
 						break
 					}
 				}
-				ebpf := ebpf.NewEbpf(index, address.IP, ports, *address.NodeName, address.TargetRef.Name,
-					address.TargetRef.Namespace, new.Name, c.Ch)
+				ebpf := ebpf2.New(nil, index, address.IP, ports)
 				err = ebpf.Load()
 				if err != nil {
 					log.Printf("Load ebpf error[%s][%s][%s]: %v\n", *address.NodeName,

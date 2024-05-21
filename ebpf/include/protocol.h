@@ -363,10 +363,10 @@ typedef struct {
 } conn_tuple_t;
 
 typedef struct {
-    __u32 dstIP;
-    __u32 dstPort;
     __u32 srcIP;
-    __u32 srcPort;
+    __u32 dstIP;
+    __u16 srcPort;
+    __u16 dstPort;
 } sock_key;
 
 typedef struct {

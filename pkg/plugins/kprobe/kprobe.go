@@ -4,16 +4,18 @@ import (
 	"sync"
 	"time"
 
+	"github.com/erda-project/erda-infra/base/servicehub"
+	corev1 "k8s.io/api/core/v1"
+
 	"github.com/erda-project/ebpf-agent/metric"
 	"github.com/erda-project/ebpf-agent/pkg/plugins/kprobe/controller"
 	"github.com/erda-project/ebpf-agent/pkg/plugins/kprobe/kprobesysctl"
-	"github.com/erda-project/erda-infra/base/servicehub"
-	corev1 "k8s.io/api/core/v1"
 )
 
 type Interface interface {
 	GetSysctlStat(pid uint32) (kprobesysctl.SysctlStat, error)
 	GetPodByUID(podUID string) (corev1.Pod, error)
+	GetService(ip string) (corev1.Service, error)
 	RegisterNetLinkListener() <-chan NeighLinkEvent
 	GetVethes() ([]NeighLink, error)
 }
@@ -85,6 +87,10 @@ func (p *provider) GetSysctlStat(pid uint32) (kprobesysctl.SysctlStat, error) {
 
 func (p *provider) GetPodByUID(podUID string) (corev1.Pod, error) {
 	return p.kprobeController.GetPodByUID(podUID)
+}
+
+func (p *provider) GetService(ip string) (corev1.Service, error) {
+	return p.kprobeController.GetService(ip)
 }
 
 func init() {
