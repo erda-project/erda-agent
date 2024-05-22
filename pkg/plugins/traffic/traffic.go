@@ -7,6 +7,7 @@ import (
 	"k8s.io/klog"
 
 	"github.com/erda-project/ebpf-agent/metric"
+	"github.com/erda-project/ebpf-agent/pkg/plugins/kprobe"
 	"github.com/erda-project/ebpf-agent/pkg/plugins/traffic/controller"
 	"github.com/erda-project/ebpf-agent/pkg/plugins/traffic/ebpf"
 	"github.com/erda-project/ebpf-agent/pkg/plugins/traffic/red"
@@ -16,15 +17,17 @@ import (
 type provider struct {
 	ch               chan ebpf.Metric
 	trafficCollector *controller.Controller
+	kprobeHelper     kprobe.Interface
 }
 
-func (p *provider) Init() error {
+func (p *provider) Init(ctx servicehub.Context) error {
 	p.ch = make(chan ebpf.Metric, 100)
+	p.kprobeHelper = ctx.Service("kprobe").(kprobe.Interface)
 	return nil
 }
 
 func (p *provider) Gather(c chan metric.Metric) {
-	control := controller.NewController(p.ch)
+	control := controller.NewController(p.ch, p.kprobeHelper)
 	control.Run()
 	redMetric := make(map[string]red.RED)
 	calTicker := time.NewTicker(60 * time.Second)
@@ -67,9 +70,9 @@ func (p *provider) Gather(c chan metric.Metric) {
 }
 
 func init() {
-	servicehub.Register("http", &servicehub.Spec{
-		Services:     []string{"http"},
-		Description:  "ebpf for http",
+	servicehub.Register("traffic", &servicehub.Spec{
+		Services:     []string{"traffic"},
+		Description:  "ebpf for traffic",
 		Dependencies: []string{},
 		Creator: func() servicehub.Provider {
 			return &provider{}

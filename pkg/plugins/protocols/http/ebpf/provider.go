@@ -9,8 +9,7 @@ import (
 	"time"
 
 	"github.com/cilium/ebpf"
-
-	"github.com/erda-project/erda-infra/base/logs"
+	"k8s.io/klog/v2"
 
 	"github.com/erda-project/ebpf-agent/pkg/utils"
 )
@@ -35,7 +34,7 @@ type provider struct {
 	collection *ebpf.Collection
 	fd         int
 	sock       int
-	log        logs.Logger
+	log        klog.Logger
 }
 
 const (
@@ -44,9 +43,8 @@ const (
 	ProtocolICMP  = 1                        // Internet Control Message
 )
 
-func New(log logs.Logger, ifIndex int, ip string, ch chan Metric) Interface {
+func New(ifIndex int, ip string, ch chan Metric) Interface {
 	return &provider{
-		log:       log,
 		ifIndex:   ifIndex,
 		ipAddress: ip,
 		ch:        ch,
@@ -97,8 +95,8 @@ func (e *provider) Load() error {
 func (e *provider) FanInMetric(m *ebpf.Map) {
 	defer func() {
 		if err := recover(); err != nil {
-			e.log.Errorf("panic: %v", err)
-			e.log.Errorf("stack: %s", string(debug.Stack()))
+			klog.Errorf("panic: %v", err)
+			klog.Errorf("stack: %s", string(debug.Stack()))
 		}
 	}()
 
@@ -110,12 +108,12 @@ func (e *provider) FanInMetric(m *ebpf.Map) {
 		for m.Iterate().Next(&key, &val) {
 			metric, err := decodeMetrics(&key, &val)
 			if err != nil {
-				e.log.Errorf("decode metrics error: %v", err)
+				klog.Errorf("decode metrics error: %v", err)
 			}
 			e.ch <- *metric
 			// clean map
 			if err := m.Delete(key); err != nil {
-				e.log.Errorf("delete map error: %v", err)
+				klog.Errorf("delete map error: %v", err)
 				continue
 			}
 		}
