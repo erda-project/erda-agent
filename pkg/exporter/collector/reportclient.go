@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/erda-project/ebpf-agent/metric"
@@ -150,7 +151,11 @@ func (c *ReportClient) write(name string, requestBuffer io.Reader) error {
 }
 
 func (c *ReportClient) formatRoute(name string) string {
-	return fmt.Sprintf("http://%s/collect/%s", c.CFG.ReportConfig.Collector.Addr, name)
+	addr := c.CFG.ReportConfig.Collector.Addr
+	if !strings.HasPrefix(addr, "https://") && !strings.HasPrefix(addr, "http://") {
+		addr = "https://" + addr
+	}
+	return fmt.Sprintf("%s/collect/%s", addr, name)
 }
 
 func CompressWithGzip(data io.Reader) (io.Reader, error) {

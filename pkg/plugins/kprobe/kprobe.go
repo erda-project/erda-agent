@@ -77,7 +77,7 @@ func (p *provider) GetVethes() ([]NeighLink, error) {
 	return ans, nil
 }
 
-func (p *provider) Gather(c chan metric.Metric) {
+func (p *provider) Gather(c chan *metric.Metric) {
 	p.kprobeController.Start(c)
 }
 

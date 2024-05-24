@@ -44,7 +44,7 @@ func (p *provider) GetNatInfo(ip string, port uint16) (NatInfo, bool) {
 	return natInfo.(NatInfo), true
 }
 
-func (p *provider) Gather(c chan metric.Metric) {
+func (p *provider) Gather(c chan *metric.Metric) {
 	obj := netebpf.RunEbpf()
 	kpNat, err := link.Kprobe("nf_nat_setup_info", obj.K_natSetUpInfo, nil)
 	if err != nil {
@@ -76,9 +76,9 @@ func (p *provider) Gather(c chan metric.Metric) {
 			replySrcIP, replyDstIP := net.IP(event.Dst[:4]), net.IP(event.Src[:4])
 			klog.Infof("srcIP: %s, srcPort: %d, dstIP: %s, dstPort: %d, reply srcIP :%s, reply dstIP: %s", srcIP, event.OriSport, dstIP, event.OriDport, replySrcIP, replyDstIP)
 			natInfo := NatInfo{
-				OriDstIP:     string(dstIP),
+				OriDstIP:     dstIP.String(),
 				OriDstPort:   event.OriDport,
-				ReplyDstIP:   string(replyDstIP),
+				ReplyDstIP:   replyDstIP.String(),
 				ReplyDstPort: event.Sport,
 			}
 			p.natCache.Set(fmt.Sprintf("%s:%d", srcIP, event.OriSport), natInfo, time.Minute)

@@ -60,7 +60,7 @@ type Metric struct {
 	ServiceName string
 }
 
-func (m *Metric) CovertMetric() metric.Metric {
+func (m *Metric) CovertMetric() *metric.Metric {
 	var metric metric.Metric
 	metric.Measurement = "http"
 	metric.AddTags("podname", m.PodName)
@@ -79,7 +79,7 @@ func (m *Metric) CovertMetric() metric.Metric {
 	metric.AddTags("code", m.Code)
 	metric.AddTags("ifinfex", strconv.Itoa(m.IfIndex))
 	metric.AddField("duration", m.Duration)
-	return metric
+	return &metric
 }
 func (m *Metric) String() string {
 	return fmt.Sprintf("%s %d %d [%s][%d] --> [%s][%d][%s %s] ====> %s [%dms] \n%s %s %s %s %d\n",

@@ -50,11 +50,11 @@ func NewController(helper kprobe.Interface) Controller {
 	}
 }
 
-func (c *Controller) Start(ch chan metric.Metric) {
+func (c *Controller) Start(ch chan *metric.Metric) {
 	go c.watchForOoms(ch)
 }
 
-func (c *Controller) watchForOoms(ch chan metric.Metric) error {
+func (c *Controller) watchForOoms(ch chan *metric.Metric) error {
 	//outStream := make(chan *oomprocesser.OomInstance, 10)
 	//oomParser, err := oomprocesser.New()
 	//if err != nil {
@@ -78,7 +78,7 @@ func (c *Controller) watchForOoms(ch chan metric.Metric) error {
 				continue
 			}
 			oomMetric := c.convertOomEvent2Metric(event, pod, stat)
-			ch <- oomMetric
+			ch <- &oomMetric
 			klog.Infof("oom event: %+v", event)
 		}
 		//for oomInstance := range outStream {

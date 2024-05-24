@@ -18,7 +18,7 @@ func (p *provider) Init(ctx servicehub.Context) error {
 	return nil
 }
 
-func (p *provider) Gather(c chan metric.Metric) {
+func (p *provider) Gather(c chan *metric.Metric) {
 	p.memoryController.Start(c)
 }
 
