@@ -43,7 +43,7 @@ func (p *provider) Init(ctx servicehub.Context) error {
 	return nil
 }
 
-func (p *provider) Gather(c chan metric.Metric) {
+func (p *provider) Gather(c chan *metric.Metric) {
 	p.ch = make(chan rpcebpf.Metric, 100)
 	eBPFprogram := rpcebpf.GetEBPFProg()
 
@@ -99,7 +99,7 @@ func (p *provider) Gather(c chan metric.Metric) {
 	}
 }
 
-func (p *provider) sendMetrics(c chan metric.Metric) {
+func (p *provider) sendMetrics(c chan *metric.Metric) {
 	for {
 		select {
 		case m := <-p.ch:
@@ -111,7 +111,7 @@ func (p *provider) sendMetrics(c chan metric.Metric) {
 			if mc.Name == redisMeasurementGroup && strings.ToLower(mc.Tags["redis_command"]) == "ping" {
 				continue
 			}
-			c <- mc
+			c <- &mc
 			klog.Infof("rpc metric: %+v", mc)
 		}
 	}

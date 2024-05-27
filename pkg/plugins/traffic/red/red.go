@@ -28,7 +28,7 @@ func (r *RED) String() string {
 	)
 }
 
-func (r *RED) CovertMetric() metric.Metric {
+func (r *RED) CovertMetric() *metric.Metric {
 	var m metric.Metric
 	m.Measurement = "red"
 	m.AddTags("podname", r.PodName)
@@ -38,5 +38,5 @@ func (r *RED) CovertMetric() metric.Metric {
 	m.AddField("qps", r.QPS)
 	m.AddField("errrate", r.ErrRate)
 	m.AddField("duration", r.Duration)
-	return m
+	return &m
 }

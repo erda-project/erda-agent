@@ -4,7 +4,8 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strings"
+	"sync"
+	"time"
 
 	"github.com/cilium/ebpf/rlimit"
 	"k8s.io/klog"
@@ -20,11 +21,13 @@ type Config struct {
 }
 
 type provider struct {
+	sync.Mutex
 	Cfg *Config
 
 	ctx             servicehub.Context
 	plugins         []Plugin
 	collectorClient *collector.ReportClient
+	metrics         []*metric.Metric
 }
 
 func (p *provider) Init(ctx servicehub.Context) error {
@@ -34,6 +37,7 @@ func (p *provider) Init(ctx servicehub.Context) error {
 	}
 	p.ctx = ctx
 	p.plugins = make([]Plugin, 0, len(p.Cfg.Plugins))
+	p.metrics = make([]*metric.Metric, 0)
 	reportConfig := &collector.CollectorConfig{}
 	envconf.MustLoad(reportConfig)
 	p.collectorClient = collector.CreateReportClient(reportConfig)
@@ -48,23 +52,28 @@ func (p *provider) Run(ctx context.Context) error {
 		}
 		p.plugins = append(p.plugins, plugin)
 	}
-	ch := make(chan metric.Metric, 1000)
+	ch := make(chan *metric.Metric, 1000)
 	for _, plugin := range p.plugins {
 		go plugin.Gather(ch)
 	}
+	ticker := time.NewTicker(5 * time.Second)
 	for {
 		select {
 		case m := <-ch:
-			//处理metric, print / influxdb / prometheus / erda   等
-			//klog.Infof("[%d] metric is waiting to write", len(ch))
-			// TODO： push other metrics to collector
-			if m.Name == "docker_container_summary" || strings.HasPrefix(m.Name, "application_") {
-				if err := p.collectorClient.Send([]*metric.Metric{&m}); err != nil {
+			p.Lock()
+			p.metrics = append(p.metrics, m)
+			p.Unlock()
+		case <-ticker.C:
+			p.Lock()
+			if len(p.metrics) > 0 {
+				if err := p.collectorClient.Send(p.metrics); err != nil {
 					klog.Errorf("send metric to collector error: %v", err)
 					continue
 				}
-				//klog.Infof("send metric to collector success")
+				klog.Infof("send metric to collector success")
+				p.metrics = make([]*metric.Metric, 0)
 			}
+			p.Unlock()
 		}
 	}
 	return nil

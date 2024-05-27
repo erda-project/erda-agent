@@ -29,7 +29,7 @@ func (p *provider) Init(ctx servicehub.Context) error {
 	return nil
 }
 
-func (p *provider) Gather(c chan metric.Metric) {
+func (p *provider) Gather(c chan *metric.Metric) {
 	ebpfProgram := GetEBPFProg()
 	spec, err := ebpf.LoadCollectionSpecFromReader(bytes.NewReader(ebpfProgram))
 	if err != nil {
@@ -102,12 +102,12 @@ func (p *provider) convert2Metric(ev Event) metric.Metric {
 
 }
 
-func (p *provider) sendMetrics(c chan metric.Metric) {
+func (p *provider) sendMetrics(c chan *metric.Metric) {
 	for {
 		select {
 		case m := <-p.ch:
 			mc := p.convert2Metric(m)
-			c <- mc
+			c <- &mc
 			klog.Infof("kafka metric: %+v", mc)
 		}
 	}

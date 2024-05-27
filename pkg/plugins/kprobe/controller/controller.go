@@ -41,11 +41,11 @@ func NewController() Controller {
 	}
 }
 
-func (c *Controller) Start(ch chan metric.Metric) {
+func (c *Controller) Start(ch chan *metric.Metric) {
 	go c.watchKprobe(ch)
 }
 
-func (c *Controller) watchKprobe(ch chan metric.Metric) error {
+func (c *Controller) watchKprobe(ch chan *metric.Metric) error {
 	sysctlChan := make(chan *kprobesysctl.SysctlStat, 10)
 	go func() {
 		for _ = range sysctlChan {

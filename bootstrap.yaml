@@ -1,9 +1,9 @@
 ebpf-agent:
 
 memory:
-
-traffic:
-
+#
+#traffic:
+#
 kprobe:
 
 rpc:
@@ -12,12 +12,15 @@ netfilter:
 
 kafka:
 
+http:
+
 
 agent.controller:
   plugins:
     - rpc
     - memory
     - kprobe
-    - traffic
+#    - traffic
     - netfilter
     - kafka
+    - http
