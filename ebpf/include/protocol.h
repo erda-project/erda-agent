@@ -103,7 +103,8 @@ struct rpc_package_t {
 
 #define SQL_COMMAND_MAX_SIZE 6
 #define MYSQL_RESPONSE_MAX_SIZE 10
-#define MYSQL_QUERY_MAX_SIZE 10
+#define MYSQL_QUERY_MAX_SIZE 20
+#define MYSQL_SERVER_STATUS_SIZE 2
 
 #define SQL_ALTER "ALTER"
 #define SQL_CREATE "CREATE"
@@ -122,6 +123,11 @@ typedef struct {
     __u8 seq_id;
     __u8 command_type;
 } __attribute__((packed)) mysql_hdr;
+
+typedef struct {
+//    __u64 affected_rows:16;
+    __u8 server_status;
+} __attribute__((packed)) mysql_ok_hdr;
 
 typedef struct {
     __u32 err_code;
@@ -202,7 +208,7 @@ static __always_inline bool is_sql_command(const char *buf, __u32 buf_size, stru
         || check_command(tmp, SQL_SHOW, buf_size);
 
     if (is_command) {
-        for (int i = 0; i < MYSQL_QUERY_MAX_SIZE; i++) {
+        for (int i = 0; i < MAX_HTTP2_PATH_CONTENT_LENGTH; i++) {
             pkg->path[i] = buf[i];
         }
         pkg->phase = P_REQUEST;
@@ -255,7 +261,7 @@ static __always_inline bool is_mysql_catalog(const char *buf, __u32 buf_size, st
 #define HTTP2_STATUS_HEADER_IDX 8
 
 typedef struct {
-    char data[CLASSIFICATION_MAX_BUFFER];
+    char data[MAX_HTTP2_PATH_CONTENT_LENGTH];
     size_t size;
 } classification_buffer_t;
 
@@ -294,7 +300,7 @@ typedef struct {
         return;                                                                                                     \
     }
 
-READ_INTO_BUFFER(for_classification, CLASSIFICATION_MAX_BUFFER, BLK_SIZE)
+READ_INTO_BUFFER(for_classification, MAX_HTTP2_PATH_CONTENT_LENGTH, BLK_SIZE)
 
 typedef enum
 {
@@ -380,7 +386,7 @@ static __always_inline void __init_buffer(struct __sk_buff *skb, skb_info_t *skb
     bpf_memset(buffer->data, 0, sizeof(buffer->data));
     read_into_buffer_for_classification((char *)buffer->data, skb, skb_info->data_off);
     const size_t payload_length = skb->len - skb_info->data_off;
-    buffer->size = payload_length < CLASSIFICATION_MAX_BUFFER ? payload_length : CLASSIFICATION_MAX_BUFFER;
+    buffer->size = payload_length < MAX_HTTP2_PATH_CONTENT_LENGTH ? payload_length : MAX_HTTP2_PATH_CONTENT_LENGTH;
 }
 
 //static inline int ip_is_fragment(struct __sk_buff *skb, __u32 nhoff)
@@ -709,7 +715,6 @@ static __always_inline rpc_status_t judge_rpc(const struct __sk_buff *skb, const
         }
 
         if (current_frame.type == kHeadersFrame) {
-//            bpf_printk("header frame, offset: %d, length: %d\n", info.data_off, current_frame.length);
             frames[frames_count++] = (frame_info_t){ .offset = info.data_off, .length = current_frame.length };
         }
         if (current_frame.type == kDataFrame) {
@@ -721,7 +726,7 @@ static __always_inline rpc_status_t judge_rpc(const struct __sk_buff *skb, const
         info.data_off += current_frame.length;
     }
 
-#pragma unroll(GRPC_MAX_FRAMES_TO_PROCESS)
+    #pragma unroll(GRPC_MAX_FRAMES_TO_PROCESS)
     for (__u8 i = 0; i < GRPC_MAX_FRAMES_TO_PROCESS && status == PAYLOAD_UNDETERMINED; ++i) {
         if (i >= frames_count) {
             break;
@@ -730,9 +735,6 @@ static __always_inline rpc_status_t judge_rpc(const struct __sk_buff *skb, const
         info.data_off = frames[i].offset;
 
         status = scan_headers(skb, &info, frames[i].length, pkg);
-    }
-    if (status == PAYLOAD_UNDETERMINED && pkg->phase != P_UNKNOWN) {
-        status = PAYLOAD_GRPC;
     }
 
     return status;
@@ -803,15 +805,19 @@ static __always_inline bool is_mysql(const char* buf, __u32 buf_size, const skb_
     if (header.payload_length == 0) {
         return false;
     }
+    mysql_ok_hdr ok_header;
 
     switch (header.command_type) {
     case MYSQL_COMMAND_QUERY:
-//        bpf_printk("mysql query\n");
         return is_sql_command((char*)(buf+sizeof(mysql_hdr)), buf_size-sizeof(mysql_hdr), pkg);
-//    case MYSQL_OK00_RESPONSE:
-//        pkg->phase = P_RESPONSE;
-//        pkg->mysql_status = MYSQL_OK_STATUS;
-//        return 1;
+    case MYSQL_OK00_RESPONSE:
+        ok_header = *((mysql_ok_hdr *)(buf+sizeof(mysql_hdr)+2));
+        if (ok_header.server_status != 2) {
+            return false;
+        }
+        pkg->phase = P_RESPONSE;
+        pkg->mysql_status = MYSQL_OK_STATUS;
+        return 1;
 //    case MYSQL_EOF_RESPONSE:
 //        pkg->phase = P_RESPONSE;
 //        pkg->mysql_status = MYSQL_OK_STATUS;
@@ -825,7 +831,6 @@ static __always_inline bool is_mysql(const char* buf, __u32 buf_size, const skb_
     case MYSQL_SERVER_GREETING_V9:
         return is_version((char*)(buf+sizeof(mysql_hdr)), buf_size-sizeof(mysql_hdr));
     default:
-//        bpf_printk("mysql commond type: %d\n", header.command_type);
         return is_mysql_catalog((char*)(buf+sizeof(mysql_hdr)), buf_size-sizeof(mysql_hdr), pkg);
     }
 }

@@ -96,7 +96,8 @@ int kretprobe_nf_nat_setup_info(uint ret) {
     conn_ev.dst.v4addr = replyTuple.dst.u3.ip;
     conn_ev.ori_src.v4addr = originTuple.src.u3.ip;
     conn_ev.ori_dst.v4addr = originTuple.dst.u3.ip;
-    bpf_map_update_elem(&nf_conn_maps, &pid_tgid, &conn_ev, BPF_ANY);
+    u64 key = bpf_ktime_get_ns();
+    bpf_map_update_elem(&nf_conn_maps, &key, &conn_ev, BPF_ANY);
     return 0;
 }
 //

@@ -9,20 +9,20 @@ import (
 	"sync"
 	"time"
 
-	"k8s.io/klog"
-
 	"github.com/cilium/ebpf"
 	"github.com/erda-project/ebpf-agent/metric"
 	"github.com/erda-project/ebpf-agent/pkg/plugins/kprobe"
+	"github.com/erda-project/ebpf-agent/pkg/plugins/netfilter"
 	rpcebpf "github.com/erda-project/ebpf-agent/pkg/plugins/protocols/rpc/ebpf"
 	"github.com/erda-project/erda-infra/base/servicehub"
+	"k8s.io/klog/v2"
 )
 
 const (
 	rpcMeasurementGroup      = "application_rpc"
 	rpcErrorMeasurementGroup = rpcMeasurementGroup + "_error"
 	dbMeasurementGroup       = "application_db"
-	redisMeasurementGroup    = "application_redis"
+	redisMeasurementGroup    = "application_cache"
 	dbErrorMeasurementGroup  = dbMeasurementGroup + "_error"
 )
 
@@ -34,11 +34,13 @@ type provider struct {
 	sync.RWMutex
 	ch           chan rpcebpf.Metric
 	kprobeHelper kprobe.Interface
+	netNatHelper netfilter.Interface
 	rpcProbes    map[int]*rpcebpf.Ebpf
 }
 
 func (p *provider) Init(ctx servicehub.Context) error {
 	p.kprobeHelper = ctx.Service("kprobe").(kprobe.Interface)
+	p.netNatHelper = ctx.Service("netfilter").(netfilter.Interface)
 	p.rpcProbes = make(map[int]*rpcebpf.Ebpf)
 	return nil
 }
@@ -104,7 +106,11 @@ func (p *provider) sendMetrics(c chan *metric.Metric) {
 		select {
 		case m := <-p.ch:
 			if len(m.Status) == 0 || len(m.Path) == 0 {
-				continue
+				if m.RpcType == rpcebpf.RPC_TYPE_GRPC {
+					m.Path = "Unknown"
+				} else {
+					continue
+				}
 			}
 			mc := p.convertRpc2Metric(&m)
 			// ignore redis ping
@@ -112,7 +118,7 @@ func (p *provider) sendMetrics(c chan *metric.Metric) {
 				continue
 			}
 			c <- &mc
-			klog.Infof("rpc metric: %+v", mc)
+			//klog.Infof("rpc metric: %+v", mc)
 		}
 	}
 }
@@ -180,6 +186,7 @@ func (p *provider) convertRpc2Metric(m *rpcebpf.Metric) metric.Metric {
 		}
 		res.Tags["redis_staus"] = m.Status
 		res.Tags["redis_sql"] = res.Tags["redis_command"] + " " + res.Tags["redis_args"]
+		res.Tags["db_statement"] = res.Tags["redis_sql"]
 	}
 	res.Tags["rpc_target"] = rpcTarget
 	if m.RpcType == rpcebpf.RPC_TYPE_DUBBO {
@@ -203,11 +210,37 @@ func (p *provider) convertRpc2Metric(m *rpcebpf.Metric) metric.Metric {
 			res.Tags["error"] = "true"
 		}
 	}
-	targetPod, err := p.kprobeHelper.GetPodByUID(m.SrcIP)
+	sourcePod, err := p.kprobeHelper.GetPodByUID(m.SrcIP)
+	if err == nil {
+		res.OrgName = sourcePod.Labels["DICE_ORG_NAME"]
+		res.Tags["source_application_id"] = sourcePod.Labels["DICE_APPLICATION_ID"]
+		res.Tags["source_application_name"] = sourcePod.Labels["DICE_APPLICATION_NAME"]
+		res.Tags["source_org_id"] = sourcePod.Labels["DICE_ORG_ID"]
+		res.Tags["_metric_scope_id"] = sourcePod.Annotations["msp.erda.cloud/terminus_key"]
+		res.Tags["org_name"] = sourcePod.Labels["DICE_ORG_NAME"]
+		res.Tags["cluster_name"] = sourcePod.Labels["DICE_CLUSTER_NAME"]
+		res.Tags["source_project_id"] = sourcePod.Labels["DICE_PROJECT_ID"]
+		res.Tags["source_project_name"] = sourcePod.Labels["DICE_PROJECT_NAME"]
+		res.Tags["source_runtime_id"] = sourcePod.Labels["DICE_RUNTIME_ID"]
+		res.Tags["source_runtime_name"] = sourcePod.Annotations["msp.erda.cloud/runtime_name"]
+		//res.Tags["source_service_id"] = fmt.Sprintf("%s_%s_%s", sourcePod.Labels["DICE_APPLICATION_ID"], sourcePod.Annotations["msp.erda.cloud/runtime_name"], sourcePod.Labels["DICE_SERVICE_NAME"])
+		res.Tags["source_service_id"] = sourcePod.Annotations["msp.erda.cloud/service_name"]
+		res.Tags["source_service_name"] = sourcePod.Annotations["msp.erda.cloud/service_name"]
+		res.Tags["source_workspace"] = sourcePod.Annotations["msp.erda.cloud/workspace"]
+		res.Tags["source_terminus_key"] = sourcePod.Annotations["msp.erda.cloud/terminus_key"]
+	}
+
+	dstIP := m.DstIP
+	natInfo, exist := p.netNatHelper.GetNatInfo(m.SrcIP, m.SrcPort)
+	if exist {
+		dstIP = natInfo.ReplyDstIP
+		m.DstPort = natInfo.ReplyDstPort
+	}
+	targetPod, err := p.kprobeHelper.GetPodByUID(dstIP)
 	if err == nil {
 		res.OrgName = targetPod.Labels["DICE_ORG_NAME"]
 		res.Tags["cluster_name"] = targetPod.Labels["DICE_CLUSTER_NAME"]
-		res.Tags["_metric_scope_id"] = targetPod.Annotations["msp.erda.cloud/terminus_key"]
+		//res.Tags["_metric_scope_id"] = targetPod.Annotations["msp.erda.cloud/terminus_key"]
 		res.Tags["host_ip"] = targetPod.Status.HostIP
 		res.Tags["org_name"] = targetPod.Labels["DICE_ORG_NAME"]
 		res.Tags["target_application_id"] = targetPod.Labels["DICE_APPLICATION_ID"]
@@ -217,28 +250,12 @@ func (p *provider) convertRpc2Metric(m *rpcebpf.Metric) metric.Metric {
 		res.Tags["target_project_name"] = targetPod.Labels["DICE_PROJECT_NAME"]
 		res.Tags["target_runtime_id"] = targetPod.Labels["DICE_RUNTIME_ID"]
 		res.Tags["target_runtime_name"] = targetPod.Annotations["msp.erda.cloud/runtime_name"]
-		res.Tags["target_service_id"] = fmt.Sprintf("%s_%s_%s", targetPod.Labels["DICE_APPLICATION_ID"], targetPod.Annotations["msp.erda.cloud/runtime_name"], targetPod.Labels["DICE_SERVICE_NAME"])
+		//res.Tags["target_service_id"] = fmt.Sprintf("%s_%s_%s", targetPod.Labels["DICE_APPLICATION_ID"], targetPod.Annotations["msp.erda.cloud/runtime_name"], targetPod.Labels["DICE_SERVICE_NAME"])
+		res.Tags["target_service_id"] = targetPod.Annotations["msp.erda.cloud/service_name"]
 		res.Tags["target_service_instance_id"] = string(targetPod.UID)
 		res.Tags["target_service_name"] = targetPod.Annotations["msp.erda.cloud/service_name"]
 		res.Tags["target_terminus_key"] = targetPod.Annotations["msp.erda.cloud/terminus_key"]
 		res.Tags["target_workspace"] = targetPod.Annotations["msp.erda.cloud/workspace"]
-	}
-	sourcePod, err := p.kprobeHelper.GetPodByUID(m.DstIP)
-	if err == nil {
-		res.OrgName = sourcePod.Labels["DICE_ORG_NAME"]
-		res.Tags["source_application_id"] = sourcePod.Labels["DICE_APPLICATION_ID"]
-		res.Tags["source_application_name"] = sourcePod.Labels["DICE_APPLICATION_NAME"]
-		res.Tags["source_org_id"] = sourcePod.Labels["DICE_ORG_ID"]
-		res.Tags["org_name"] = sourcePod.Labels["DICE_ORG_NAME"]
-		res.Tags["cluster_name"] = sourcePod.Labels["DICE_CLUSTER_NAME"]
-		res.Tags["source_project_id"] = sourcePod.Labels["DICE_PROJECT_ID"]
-		res.Tags["source_project_name"] = sourcePod.Labels["DICE_PROJECT_NAME"]
-		res.Tags["source_runtime_id"] = sourcePod.Labels["DICE_RUNTIME_ID"]
-		res.Tags["source_runtime_name"] = sourcePod.Annotations["msp.erda.cloud/runtime_name"]
-		res.Tags["source_service_id"] = fmt.Sprintf("%s_%s_%s", sourcePod.Labels["DICE_APPLICATION_ID"], sourcePod.Annotations["msp.erda.cloud/runtime_name"], sourcePod.Labels["DICE_SERVICE_NAME"])
-		res.Tags["source_service_name"] = sourcePod.Annotations["msp.erda.cloud/service_name"]
-		res.Tags["source_workspace"] = sourcePod.Annotations["msp.erda.cloud/workspace"]
-		res.Tags["source_terminus_key"] = sourcePod.Annotations["msp.erda.cloud/terminus_key"]
 	}
 	return res
 }
@@ -247,7 +264,7 @@ func init() {
 	servicehub.Register("rpc", &servicehub.Spec{
 		Services:     []string{"rpc"},
 		Description:  "ebpf for rpc",
-		Dependencies: []string{"kprobe"},
+		Dependencies: []string{"kprobe", "netfilter"},
 		Creator: func() servicehub.Provider {
 			return &provider{}
 		},

@@ -82,8 +82,22 @@ int rpc__filter_package(struct __sk_buff *skb)
         return 0;
     } else {
         rpc_status_t status = judge_rpc(skb, &skb_info, &pkg);
+        connection_info_t info = {};
+        info.s_port = skb_tup.sport;
+        info.d_port = skb_tup.dport;
+        info.s_addr = skb_tup.saddr_l;
+        info.d_addr = skb_tup.daddr_l;
+        // when first time to judge the connection is grpc, we update map with the connection info
+        // finally kprobe_tcp_close will delete the connection info
+        if (status == PAYLOAD_GRPC) {
+            bool is_grpc = true;
+            bpf_map_update_elem(&grpc_connections, &info, &is_grpc, BPF_ANY);
+        }
         if (status != PAYLOAD_GRPC) {
-            return 0;
+            bool is_grpc = bpf_map_lookup_elem(&grpc_connections, &info);
+            if (!is_grpc) {
+                return 0;
+            }
         }
         pkg.rpc_type = PAYLOAD_GRPC;
     }
@@ -134,6 +148,10 @@ int rpc__filter_package(struct __sk_buff *skb)
 
         struct rpc_package_t *request_pkg = bpf_map_lookup_elem(&grpc_request_map, &req_conn);
         if (request_pkg) {
+            pkg.srcIP = req_conn.srcIP;
+            pkg.dstIP = req_conn.dstIP;
+            pkg.srcPort = req_conn.srcPort;
+            pkg.dstPort = req_conn.dstPort;
             pkg.duration = bpf_ktime_get_ns() - request_pkg->duration;
             pkg.path_len = request_pkg->path_len;
             for (int i = 0; i < MAX_HTTP2_PATH_CONTENT_LENGTH; i++) {
@@ -211,11 +229,11 @@ int socket__amqp_filter(struct __sk_buff* skb) {
                 bpf_map_update_elem(&amqp_trace_map, &skb_info.tcp_seq, &pkg, BPF_ANY);
                 bpf_map_delete_elem(&amqp_filter_map, &skb_tup);
             }
-            bpf_printk("amqp type: %d", pkg.event.type);
-            bpf_printk("exchange bind: %s", pkg.event.exchange);
-            bpf_printk("queue bind: %s", pkg.event.queue);
-            bpf_printk("count: %d", pkg.event.count);
-            bpf_printk("duration: %lld", pkg.event.duration);
+//            bpf_printk("amqp type: %d", pkg.event.type);
+//            bpf_printk("exchange bind: %s", pkg.event.exchange);
+//            bpf_printk("queue bind: %s", pkg.event.queue);
+//            bpf_printk("count: %d", pkg.event.count);
+//            bpf_printk("duration: %lld", pkg.event.duration);
         default:
             break;
         }

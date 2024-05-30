@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"k8s.io/klog"
 	"log"
+	"sync"
 	"syscall"
 	"time"
 
@@ -20,6 +21,8 @@ const (
 )
 
 type Ebpf struct {
+	sync.Mutex
+
 	IfIndex   int
 	IPaddress string
 	NodeName  string
@@ -147,7 +150,9 @@ func (e *Ebpf) Load(spec *ebpf.CollectionSpec) error {
 		return err
 	}
 	go func() {
+		e.Lock()
 		m := e.collection.DetachMap("grpc_trace_map")
+		e.Unlock()
 		var (
 			key uint32
 			val []byte
@@ -168,7 +173,9 @@ func (e *Ebpf) Load(spec *ebpf.CollectionSpec) error {
 		}
 	}()
 	go func() {
+		e.Lock()
 		m := e.collection.DetachMap("amqp_trace_map")
+		e.Unlock()
 		var (
 			key uint32
 			val []byte
