@@ -1,9 +1,9 @@
 ebpf-agent:
 
 memory:
-#
+
 #traffic:
-#
+
 kprobe:
 
 rpc:

@@ -165,9 +165,11 @@ func DecodeMapItem(e []byte) *MapPackage {
 		}
 		m.Path = strings.ReplaceAll(m.Path, "\n", "")
 	}
-	m.Status, err = encodeHeader(e[141:142])
-	if err != nil {
-		klog.Errorf("encode status header error: %v", err)
+	if m.RpcType == 1 {
+		m.Status, err = encodeHeader(e[141:142])
+		if err != nil {
+			klog.Errorf("encode status header error: %v", err)
+		}
 	}
 	if m.RpcType == 5 {
 		if e[141] == 'O' {

@@ -52,6 +52,13 @@ struct bpf_map_def SEC("maps/tcp_connections") filtered_connections = {
     .max_entries = 1024 * 16,
 };
 
+struct bpf_map_def SEC("maps/grpc_connections") grpc_connections = {
+    .type = BPF_MAP_TYPE_HASH,
+    .key_size = sizeof(connection_info_t),
+    .value_size = sizeof(bool),
+    .max_entries = 1024 * 16,
+};
+
 static __always_inline bool parse_sock_info(struct sock *s, connection_info_t *info) {
     u16 family;
     BPF_PROBE_READ_INTO(&family, s, __sk_common.skc_family);
@@ -245,6 +252,7 @@ int kprobe_tcp_close(struct pt_regs *ctx) {
     connection_info_t info = {};
     if (parse_sock_info(sk, &info)) {
         bpf_map_delete_elem(&filtered_connections, &info);
+        bpf_map_delete_elem(&grpc_connections, &info);
     }
 
     return 0;
