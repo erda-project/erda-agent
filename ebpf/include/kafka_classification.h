@@ -60,20 +60,100 @@ static __always_inline bool get_topic_offset_from_produce_request(const kafka_he
     return true;
 }
 
-static __always_inline u32 get_topic_offset_from_fetch_request(const kafka_header_t *kafka_header) {
-    u32 offset = 3 * sizeof(s32);
+static __always_inline bool isMSBSet(uint8_t byte) {
+    return (byte & 0x80) != 0;
+}
 
-    if (kafka_header->api_version >= 3) {
-        offset += sizeof(s32);
-        if (kafka_header->api_version >= 4) {
-            offset += sizeof(s8);
-            if (kafka_header->api_version >= 7) {
-                offset += 2 * sizeof(s32);
+static __always_inline bool skip_request_tagged_fields(struct __sk_buff *skb, u32 *offset) {
+    u8 num_tagged_fields = 0;
+
+    bpf_skb_load_bytes(skb, *offset, &num_tagged_fields, 1);
+    *offset += 1;
+
+    // We don't support parsing tagged fields for now.
+    return num_tagged_fields == 0;
+}
+
+static __always_inline bool get_topic_offset_from_fetch_request(const kafka_header_t *kafka_header, struct __sk_buff *skb, u32 *offset) {
+    u32 api_version = kafka_header->api_version;
+
+    if (api_version >= 12) {
+        if (!skip_request_tagged_fields(skb, offset)) {
+            return false;
+        }
+    }
+
+    // replica_id => INT32
+    // max_wait_ms => INT32
+    // min_bytes => INT32
+    *offset += 3 * sizeof(s32);
+
+    if (api_version >= 3) {
+        // max_bytes => INT32
+        *offset += sizeof(s32);
+        if (api_version >= 4) {
+            // isolation_level => INT8
+            *offset += sizeof(s8);
+            if (api_version >= 7) {
+                // session_id => INT32
+                // session_epoch => INT32
+                *offset += 2 * sizeof(s32);
             }
         }
     }
 
-    return offset;
+    return true;
+}
+
+static __always_inline int parse_varint_u16(u16 *out, u16 in, u32 *bytes)
+{
+    *bytes = 1;
+
+    u8 first = in & 0xff;
+    u8 second = in >> 8;
+    u16 tmp = 0;
+
+    tmp |= first & 0x7f;
+    if (isMSBSet(first)) {
+        *bytes += 1;
+        tmp |= ((u16)(second & 0x7f)) << 7;
+
+        if (isMSBSet(second)) {
+            // varint larger than two bytes.
+            return false;
+        }
+    }
+
+    // When lengths are stored as varints in the protocol, they are always
+    // stored as N + 1.
+    *out = tmp - 1;
+    return true;
+}
+
+static __always_inline s16 read_first_topic_name_size(struct __sk_buff* skb, bool flexible, u32 *offset) {
+    u16 topic_name_size_raw = 0;
+
+
+//    pktbuf_load_bytes(pkt, *offset, &topic_name_size_raw, sizeof(topic_name_size_raw));
+    bpf_skb_load_bytes(skb, *offset, &topic_name_size_raw, sizeof(topic_name_size_raw));
+
+    s16 topic_name_size = 0;
+    if (flexible) {
+        u16 topic_name_size_tmp = 0;
+        u32 varint_bytes = 0;
+
+        if (!parse_varint_u16(&topic_name_size_tmp, topic_name_size_raw, &varint_bytes)) {
+            return 0;
+        }
+
+        topic_name_size = topic_name_size_tmp;
+        *offset += varint_bytes;
+    } else {
+        topic_name_size = bpf_ntohs(topic_name_size_raw);
+        *offset += sizeof(topic_name_size_raw);
+    }
+
+    return topic_name_size;
 }
 
 static __always_inline bool is_valid_client_id(struct __sk_buff *skb, u32 offset, u16 real_client_id_size) {
@@ -122,16 +202,62 @@ static __always_inline bool is_valid_kafka_request_header(const kafka_header_t *
 
 READ_INTO_BUFFER(topic_name, TOPIC_NAME_MAX_STRING_SIZE_TO_VALIDATE, BLK_SIZE)
 
-static __always_inline bool validate_first_topic_name(struct __sk_buff *skb, u32 offset) {
-    // Skipping number of entries for now
-    offset += sizeof(s32);
+static __always_inline bool skip_varint_number_of_topics(struct __sk_buff *skb, u32 *offset) {
+    u8 bytes[2] = {};
 
-    READ_BIG_ENDIAN_WRAPPER(s16, topic_name_size, skb, offset);
+    bpf_skb_load_bytes(skb, *offset, bytes, sizeof(bytes));
+
+    *offset += 1;
+    if (isMSBSet(bytes[0])) {
+        *offset += 1;
+
+        if (isMSBSet(bytes[1])) {
+            // More than 16383 topics?
+            return false;
+        }
+    }
+
+    return true;
+}
+
+//static __always_inline bool validate_first_topic_name(struct __sk_buff *skb, u32 offset) {
+//    // Skipping number of entries for now
+//    offset += sizeof(s32);
+//
+//    READ_BIG_ENDIAN_WRAPPER(s16, topic_name_size, skb, offset);
+//    if (topic_name_size <= 0 || topic_name_size > TOPIC_NAME_MAX_ALLOWED_SIZE) {
+//        return false;
+//    }
+//
+////    char topic_name[TOPIC_NAME_MAX_STRING_SIZE_TO_VALIDATE];
+//    const u32 key = 0;
+//    char *topic_name = bpf_map_lookup_elem(&kafka_topic_name, &key);
+//    if (topic_name == NULL) {
+//        return false;
+//    }
+//    bpf_memset(topic_name, 0, TOPIC_NAME_MAX_STRING_SIZE_TO_VALIDATE);
+//
+//    read_into_buffer_topic_name((char *)topic_name, skb, offset);
+//    offset += topic_name_size;
+//
+//    CHECK_STRING_VALID_TOPIC_NAME(TOPIC_NAME_MAX_STRING_SIZE_TO_VALIDATE, topic_name_size, topic_name);
+//}
+
+static __always_inline bool validate_first_topic_name(struct __sk_buff *skb, bool flexible, u32 offset) {
+    // Skipping number of entries for now
+    if (flexible) {
+        if (!skip_varint_number_of_topics(skb, &offset)) {
+            return false;
+        }
+    } else {
+        offset += sizeof(s32);
+    }
+
+    s16 topic_name_size = read_first_topic_name_size(skb, flexible, &offset);
     if (topic_name_size <= 0 || topic_name_size > TOPIC_NAME_MAX_ALLOWED_SIZE) {
         return false;
     }
 
-//    char topic_name[TOPIC_NAME_MAX_STRING_SIZE_TO_VALIDATE];
     const u32 key = 0;
     char *topic_name = bpf_map_lookup_elem(&kafka_topic_name, &key);
     if (topic_name == NULL) {
@@ -146,6 +272,7 @@ static __always_inline bool validate_first_topic_name(struct __sk_buff *skb, u32
 }
 
 static __always_inline bool is_kafka_request(const kafka_header_t *kafka_header, struct __sk_buff *skb, u32 offset) {
+    bool flexible = false;
     switch (kafka_header->api_key) {
     case KAFKA_PRODUCE:
         if (!get_topic_offset_from_produce_request(kafka_header, skb, &offset)) {
@@ -153,12 +280,15 @@ static __always_inline bool is_kafka_request(const kafka_header_t *kafka_header,
         }
         break;
     case KAFKA_FETCH:
-        offset += get_topic_offset_from_fetch_request(kafka_header);
+        if (!get_topic_offset_from_fetch_request(kafka_header, skb, &offset)) {
+            return false;
+        }
+        flexible = kafka_header->api_version >= 12;
         break;
     default:
         return false;
     }
-    return validate_first_topic_name(skb, offset);
+    return validate_first_topic_name(skb, flexible, offset);
 }
 
 static __always_inline bool is_kafka(struct __sk_buff *skb, skb_info_t *skb_info, const char* buf, __u32 buf_size) {
