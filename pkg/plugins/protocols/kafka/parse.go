@@ -8,10 +8,10 @@ type Event struct {
 }
 
 type ConnTuple struct {
-	DestIP     [4]byte
-	DestPort   uint32
 	SourceIP   [4]byte
-	SourcePort uint32
+	DestIP     [4]byte
+	SourcePort uint16
+	DestPort   uint16
 }
 
 type Transaction struct {

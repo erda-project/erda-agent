@@ -55,7 +55,11 @@ typedef struct kafka_transaction_key_t {
 } kafka_transaction_key_t;
 
 typedef enum {
-    KAFKA_FETCH_RESPONSE_PARTITION_START = 0,
+    KAFKA_FETCH_RESPONSE_START = 0,
+    KAFKA_FETCH_RESPONSE_NUM_TOPICS,
+    KAFKA_FETCH_RESPONSE_TOPIC_NAME_SIZE,
+    KAFKA_FETCH_RESPONSE_NUM_PARTITIONS,
+    KAFKA_FETCH_RESPONSE_PARTITION_START,
     KAFKA_FETCH_RESPONSE_PARTITION_ABORTED_TRANSACTIONS,
     KAFKA_FETCH_RESPONSE_RECORD_BATCHES_ARRAY_START,
     KAFKA_FETCH_RESPONSE_RECORD_BATCH_START,
@@ -63,24 +67,39 @@ typedef enum {
     KAFKA_FETCH_RESPONSE_RECORD_BATCH_MAGIC,
     KAFKA_FETCH_RESPONSE_RECORD_BATCH_RECORDS_COUNT,
     KAFKA_FETCH_RESPONSE_RECORD_BATCH_END,
+    KAFKA_FETCH_RESPONSE_RECORD_BATCHES_ARRAY_END,
+    KAFKA_FETCH_RESPONSE_PARTITION_TAGGED_FIELDS,
     KAFKA_FETCH_RESPONSE_PARTITION_END,
 } __attribute__ ((packed)) kafka_response_state;
 
 typedef struct kafka_response_context_t {
     kafka_response_state state;
     __u8 remainder;
+    __u8 varint_position;
+    kafka_response_state partition_state;
     char remainder_buf[4];
     __s32 record_batches_num_bytes;
     __s32 record_batch_length;
     __u32 expected_tcp_seq;
     __s32 carry_over_offset;
     __u32 partitions_count;
+    __u32 varint_value;
+    __u32 record_batches_arrays_idx;
+    __u32 record_batches_arrays_count;
     kafka_transaction_t transaction;
 } kafka_response_context_t;
+
+typedef struct kafka_fetch_response_record_batches_array_t {
+    __u32 num_bytes;
+    __u32 offset;
+} kafka_fetch_response_record_batches_array_t;
+
+#define KAFKA_MAX_RECORD_BATCHES_ARRAYS 50u
 
 typedef struct kafka_info_t {
     kafka_response_context_t response;
     kafka_event_t event;
+    kafka_fetch_response_record_batches_array_t record_batches_arrays[KAFKA_MAX_RECORD_BATCHES_ARRAYS];
 } kafka_info_t;
 
 typedef struct {

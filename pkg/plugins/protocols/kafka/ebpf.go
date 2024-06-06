@@ -95,7 +95,7 @@ func (e *Ebpf) Load(spec *ebpf.CollectionSpec) error {
 				}
 				ev := decodeResponse(val)
 				e.ch <- Event{ConnTuple: conn, Transaction: ev}
-				//klog.Infof("key: %+v, val: %+v\n", conn, ev)
+				klog.Infof("kafka key: %+v, val: %+v\n", conn, ev)
 			}
 			time.Sleep(1 * time.Second)
 		}
