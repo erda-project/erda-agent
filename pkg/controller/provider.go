@@ -61,7 +61,7 @@ func (p *provider) Run(ctx context.Context) error {
 		select {
 		case m := <-ch:
 			p.Lock()
-			klog.Infof("metric: %+v", m)
+			//klog.Infof("metric: %+v", m)
 			p.metrics = append(p.metrics, m)
 			p.Unlock()
 		case <-ticker.C:
