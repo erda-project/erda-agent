@@ -5,12 +5,16 @@ import (
 	"encoding/binary"
 	"fmt"
 	"log"
+	"os"
 	"regexp"
 	"strconv"
 	"time"
 
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/rlimit"
+	"github.com/erda-project/ebpf-agent/metric"
+	"github.com/erda-project/ebpf-agent/pkg/envconf"
+	"github.com/erda-project/ebpf-agent/pkg/exporter/collector"
 	"github.com/patrickmn/go-cache"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/informers"
@@ -26,10 +30,12 @@ var (
 )
 
 type KprobeSysctlController struct {
+	hostIP       string
 	sysCtlCache  *cache.Cache
 	podCache     *cache.Cache
 	serviceCache *cache.Cache
 	clientSet    *kubernetes.Clientset
+	reportClient *collector.ReportClient
 	objs         bpfObjects
 }
 
@@ -41,11 +47,15 @@ func New(clientSet *kubernetes.Clientset) *KprobeSysctlController {
 	if err := loadBpfObjects(&objs, nil); err != nil {
 		log.Fatalf("loading objects: %v", err)
 	}
+	reportConfig := &collector.CollectorConfig{}
+	envconf.MustLoad(reportConfig)
 	return &KprobeSysctlController{
+		hostIP:       os.Getenv("HOST_IP"),
 		clientSet:    clientSet,
 		sysCtlCache:  cache.New(time.Hour, 10*time.Minute),
 		podCache:     cache.New(time.Hour, 10*time.Minute),
 		serviceCache: cache.New(time.Hour, 10*time.Minute),
+		reportClient: collector.CreateReportClient(reportConfig),
 		objs:         objs,
 	}
 }
@@ -158,6 +168,18 @@ func (k *KprobeSysctlController) Start(ch chan<- *SysctlStat) error {
 		}
 	}()
 	go k.WatchKprobeSysClone(ch)
+
+	go func() {
+		ticker := time.NewTicker(5 * time.Minute)
+		for {
+			select {
+			case <-ticker.C:
+				if err := k.updateServiceNode(); err != nil {
+					klog.Errorf("failed to update service node, err: %v", err)
+				}
+			}
+		}
+	}()
 	return nil
 }
 
@@ -240,4 +262,64 @@ func EncodeStat(stat *SysctlStat) []byte {
 	}
 	binary.Write(w, binary.LittleEndian, []byte(containerID))
 	return w.Bytes()
+}
+
+func makeServiceNodeMetric(pod corev1.Pod) *metric.Metric {
+	now := time.Now().Unix()
+	return &metric.Metric{
+		Measurement: "application_service_node",
+		Name:        "application_service_node",
+		Timestamp:   time.Now().UnixNano(),
+		Tags: map[string]string{
+			"_meta":               "true",
+			"_metric_scope":       "micro_service",
+			"_metric_scope_id":    pod.Annotations["msp.erda.cloud/terminus_key"],
+			"application_id":      pod.Labels["DICE_DEPLOYMENT_ID"],
+			"application_name":    pod.Labels["DICE_APPLICATION_NAME"],
+			"cluster_name":        pod.Labels["DICE_CLUSTER_NAME"],
+			"env_id":              pod.Annotations["msp.erda.cloud/terminus_key"],
+			"host_ip":             pod.Status.HostIP,
+			"host":                pod.Spec.NodeName,
+			"instance_id":         string(pod.UID),
+			"org_id":              pod.Labels["DICE_ORG_ID"],
+			"org_name":            pod.Labels["DICE_ORG_NAME"],
+			"project_id":          pod.Labels["DICE_PROJECT_ID"],
+			"project_name":        pod.Labels["DICE_PROJECT_NAME"],
+			"runtime_id":          pod.Labels["DICE_RUNTIME_ID"],
+			"runtime_name":        pod.Annotations["msp.erda.cloud/runtime_name"],
+			"service_id":          pod.Labels["DICE_SERVICE"],
+			"service_instance_id": string(pod.UID),
+			"service_ip":          pod.Status.PodIP,
+			"service_name":        pod.Labels["DICE_SERVICE_NAME"],
+			"terminus_key":        pod.Annotations["msp.erda.cloud/terminus_key"],
+			"workspace":           pod.Labels["DICE_WORKSPACE"],
+		},
+		Fields: map[string]interface{}{
+			"start_time_count": 1,
+			"start_time_max":   now,
+			"start_time_mean":  now,
+			"start_time_min":   now,
+			"start_time_sum":   now,
+		},
+	}
+}
+
+func (k *KprobeSysctlController) updateServiceNode() error {
+	podItems := k.podCache.Items()
+	serviceNodes := make([]*metric.Metric, 0)
+	for _, item := range podItems {
+		pod, ok := item.Object.(corev1.Pod)
+		if !ok {
+			continue
+		}
+		if pod.Status.HostIP != k.hostIP || len(pod.Labels["DICE_SERVICE"]) == 0 {
+			continue
+		}
+		m := makeServiceNodeMetric(pod)
+		serviceNodes = append(serviceNodes, m)
+	}
+	if len(serviceNodes) == 0 {
+		return nil
+	}
+	return k.reportClient.Send(serviceNodes)
 }
