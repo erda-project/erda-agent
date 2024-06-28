@@ -73,7 +73,9 @@ func (p *provider) Gather(c chan *metric.Metric) {
 				}
 				proj := NewEbpf(event.Link.Attrs().Index, event.Neigh.IP.String(), p.ch)
 				if err := proj.Load(spec); err != nil {
-					klog.Fatalf("failed to load ebpf, err: %v", err)
+					klog.Errorf("failed to load ebpf, err: %v", err)
+					p.Unlock()
+					continue
 				}
 				p.probes[event.Link.Attrs().Index] = proj
 				p.Unlock()

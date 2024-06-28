@@ -54,7 +54,8 @@ func (p *provider) Gather(c chan *metric.Metric) {
 		e := ebpf.New(lIndex, nIP, p.ch)
 		p.Log.Infof("gonna to load ebpf program for veth: %s (index: %d), ip: %s", lName, lIndex, nIP)
 		if err := e.Load(); err != nil {
-			p.Log.Fatalf("failed to load ebpf program, err: %v", err)
+			p.Log.Errorf("failed to load ebpf program, err: %v", err)
+			continue
 		}
 		p.Lock()
 		p.engines[lIndex] = e

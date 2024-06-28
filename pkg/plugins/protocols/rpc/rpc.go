@@ -3,7 +3,6 @@ package rpc
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"regexp"
 	"strings"
 	"sync"
@@ -60,7 +59,8 @@ func (p *provider) Gather(c chan *metric.Metric) {
 	for _, veth := range vethes {
 		proj := rpcebpf.NewEbpf(veth.Link.Attrs().Index, veth.Neigh.IP.String(), p.ch)
 		if err := proj.Load(spec); err != nil {
-			log.Fatalf("failed to load ebpf, err: %v", err)
+			klog.Errorf("failed to load ebpf, err: %v", err)
+			continue
 		}
 		p.Lock()
 		p.rpcProbes[veth.Link.Attrs().Index] = proj
@@ -81,7 +81,8 @@ func (p *provider) Gather(c chan *metric.Metric) {
 				}
 				proj := rpcebpf.NewEbpf(event.Link.Attrs().Index, event.Neigh.IP.String(), p.ch)
 				if err := proj.Load(spec); err != nil {
-					log.Fatalf("failed to load ebpf, err: %v", err)
+					klog.Errorf("failed to load ebpf, err: %v", err)
+					continue
 				}
 				p.rpcProbes[event.Link.Attrs().Index] = proj
 				p.Unlock()
