@@ -2,6 +2,7 @@ package controller
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"sync"
@@ -68,10 +69,14 @@ func (p *provider) Run(ctx context.Context) error {
 			p.Lock()
 			if len(p.metrics) > 0 {
 				if err := p.collectorClient.Send(p.metrics); err != nil {
-					klog.Errorf("send metric to collector error: %v", err)
+					klog.Errorf("send metric to %s collector error: %v", p.collectorClient.CFG.ReportConfig.Collector.Addr, err)
+					p.Unlock()
 					continue
 				}
-				klog.Infof("send metric to collector success")
+				klog.Infof("send %d metric to %s collector success", len(p.metrics), p.collectorClient.CFG.ReportConfig.Collector.Addr)
+				example := p.metrics[0]
+				exampleStr, _ := json.Marshal(example)
+				klog.Infof("example metric: %s", string(exampleStr))
 				p.metrics = make([]*metric.Metric, 0)
 			}
 			p.Unlock()
