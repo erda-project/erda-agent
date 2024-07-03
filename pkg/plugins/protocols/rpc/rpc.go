@@ -82,6 +82,7 @@ func (p *provider) Gather(c chan *metric.Metric) {
 				proj := rpcebpf.NewEbpf(event.Link.Attrs().Index, event.Neigh.IP.String(), p.ch)
 				if err := proj.Load(spec); err != nil {
 					klog.Errorf("failed to load ebpf, err: %v", err)
+					p.Unlock()
 					continue
 				}
 				p.rpcProbes[event.Link.Attrs().Index] = proj
