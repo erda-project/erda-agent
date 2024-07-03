@@ -63,7 +63,9 @@ func (p *provider) Run(ctx context.Context) error {
 		case m := <-ch:
 			p.Lock()
 			//klog.Infof("metric: %+v", m)
-			p.metrics = append(p.metrics, m)
+			if m != nil {
+				p.metrics = append(p.metrics, m)
+			}
 			p.Unlock()
 		case <-ticker.C:
 			p.Lock()

@@ -1,7 +1,6 @@
 package controller
 
 import (
-	"log"
 	"strings"
 	"time"
 
@@ -38,15 +37,15 @@ func NewController(helper kprobe.Interface) Controller {
 	//	log.Panic(err)
 	//}
 	//
-	runtimeFactory, err := criruntime.NewFactory("/run/containerd")
-	if err != nil {
-		log.Panic(err)
-	}
+	//runtimeFactory, err := criruntime.NewFactory("/run/containerd")
+	//if err != nil {
+	//	log.Panic(err)
+	//}
 	return Controller{
 		kprobeHelper: helper,
 		//clientSet:      clientSet,
 		//config:         config,
-		runtimeFactory: runtimeFactory,
+		//runtimeFactory: runtimeFactory,
 	}
 }
 

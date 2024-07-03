@@ -17,11 +17,11 @@ services:
       max_cpu: 1
       max_mem: 1024
       network:
-        mode: container
-    binds:
-      - /:/rootfs:ro
-      - /var/run:/var/run:ro
-      - /run/containerd:/run/containerd:ro
+        mode: host
+#    binds:
+#      - /:/rootfs:ro
+#      - /var/run:/var/run:ro
+#      - /run/containerd:/run/containerd:ro
     k8s_snippet:
       container:
         securityContext:
@@ -37,9 +37,3 @@ services:
       workload: per_node
       labels:
         GROUP: ebpf-agent
-
-addons:
-  infos:
-    plan: "custom:basic"
-    options:
-      version: "1.0.0"
