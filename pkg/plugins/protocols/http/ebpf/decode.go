@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-func decodeMetrics(connTuple *ConnTuple, data *HttpPackage) (*Metric, error) {
+func DecodeMetrics(connTuple *ConnTuple, data *HttpPackage) (*Metric, error) {
 	fragItems := strings.Split(string(data.RequestFragment[:]), "\r\n")
 
 	metric := Metric{

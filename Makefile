@@ -24,7 +24,7 @@ build-ebpf: clean
     	"
 
 build-ebpf-local: clean
-	bash -x tools/ebpf/build/compile_ebpf.sh
+	KERNEL_VERSION=${KERNEL_VERSION} bash -x tools/ebpf/build/compile_ebpf.sh
 
 build-ebpf-agent:
 	CC=$(CLANG) \
