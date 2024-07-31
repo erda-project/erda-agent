@@ -139,7 +139,7 @@ struct bpf_map_def SEC("maps/nf_conn_maps") nf_conn_maps = {
     .type = BPF_MAP_TYPE_HASH,
     .key_size = sizeof(u64),
     .value_size = sizeof(struct nf_tuple),
-    .max_entries = 1024 * 10,
+    .max_entries = 1024 * 1024,
 };
 
 struct iptables_info_t {
