@@ -72,7 +72,7 @@ func run() error {
 
 	for {
 		for m.Iterate().Next(&key, &val) {
-			metric, err := ebpf2.decodeMetrics(&key, &val)
+			metric, err := ebpf2.DecodeMetrics(&key, &val)
 			if err != nil {
 				fmt.Println(err)
 			}

@@ -106,7 +106,7 @@ func (e *provider) FanInMetric(m *ebpf.Map) {
 	)
 	for {
 		for m.Iterate().Next(&key, &val) {
-			metric, err := decodeMetrics(&key, &val)
+			metric, err := DecodeMetrics(&key, &val)
 			if err != nil {
 				klog.Errorf("decode metrics error: %v", err)
 			}
