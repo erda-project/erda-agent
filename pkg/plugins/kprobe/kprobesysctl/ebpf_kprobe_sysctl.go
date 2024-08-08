@@ -10,9 +10,11 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/rlimit"
 	"github.com/erda-project/ebpf-agent/metric"
+	"github.com/erda-project/ebpf-agent/pkg/btfs"
 	"github.com/erda-project/ebpf-agent/pkg/envconf"
 	"github.com/erda-project/ebpf-agent/pkg/exporter/collector"
 	"github.com/patrickmn/go-cache"
@@ -44,7 +46,11 @@ func New(clientSet *kubernetes.Clientset) *KprobeSysctlController {
 	if err := rlimit.RemoveMemlock(); err != nil {
 		log.Fatal(err)
 	}
-	if err := loadBpfObjects(&objs, nil); err != nil {
+	if err := loadBpfObjects(&objs, &ebpf.CollectionOptions{
+		Programs: ebpf.ProgramOptions{
+			KernelTypes: btfs.BtfSpec,
+		},
+	}); err != nil {
 		log.Fatalf("loading objects: %v", err)
 	}
 	reportConfig := &collector.CollectorConfig{}
