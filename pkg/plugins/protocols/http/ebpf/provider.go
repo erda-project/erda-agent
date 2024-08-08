@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cilium/ebpf"
+	"github.com/erda-project/ebpf-agent/pkg/btfs"
 	"k8s.io/klog/v2"
 
 	"github.com/erda-project/ebpf-agent/pkg/utils"
@@ -61,7 +62,11 @@ func (e *provider) Load() error {
 	if err != nil {
 		return err
 	}
-	e.collection, err = ebpf.NewCollectionWithOptions(spec, ebpf.CollectionOptions{})
+	e.collection, err = ebpf.NewCollectionWithOptions(spec, ebpf.CollectionOptions{
+		Programs: ebpf.ProgramOptions{
+			KernelTypes: btfs.BtfSpec,
+		},
+	})
 	if err != nil {
 		return err
 	}

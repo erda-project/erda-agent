@@ -5,13 +5,15 @@ import (
 	"encoding/binary"
 	"errors"
 	"fmt"
-	"github.com/cilium/ebpf"
 	"io/ioutil"
-	"k8s.io/klog"
 	"log"
 	"syscall"
 	"time"
 	"unsafe"
+
+	"github.com/cilium/ebpf"
+	"github.com/erda-project/ebpf-agent/pkg/btfs"
+	"k8s.io/klog"
 )
 
 const (
@@ -43,7 +45,11 @@ func NewEbpf(ifindex int, ip string, ch chan Event) *Ebpf {
 func (e *Ebpf) Load(spec *ebpf.CollectionSpec) error {
 	klog.Infof("ip: %s, index: %d start kafka", e.IPaddress, e.IfIndex)
 	var err error
-	e.collection, err = ebpf.NewCollectionWithOptions(spec, ebpf.CollectionOptions{})
+	e.collection, err = ebpf.NewCollectionWithOptions(spec, ebpf.CollectionOptions{
+		Programs: ebpf.ProgramOptions{
+			KernelTypes: btfs.BtfSpec,
+		},
+	})
 	if err != nil {
 		return err
 	}
