@@ -124,7 +124,7 @@ func (p *provider) Convert(m *ebpf.Metric) *metric.Metric {
 
 	// in cluster
 	switch t := target.(type) {
-	case corev1.Pod:
+	case *corev1.Pod:
 		p.l.Infof("source(pod): %s/%d, target(pod): %s/%s", m.SourceIP, m.SourcePort, t.Namespace, t.Name)
 		output.Tags["cluster_name"] = t.Labels["DICE_CLUSTER_NAME"]
 		output.Tags["db_host"] = fmt.Sprintf("%s:%d", m.DestIP, m.DestPort)
@@ -151,7 +151,7 @@ func (p *provider) Convert(m *ebpf.Metric) *metric.Metric {
 		output.Tags["target_service_name"] = t.Annotations["msp.erda.cloud/service_name"]
 		output.Tags["target_terminus_key"] = t.Annotations["msp.erda.cloud/terminus_key"]
 		output.Tags["target_workspace"] = t.Annotations["msp.erda.cloud/workspace"]
-	case corev1.Service:
+	case *corev1.Service:
 		// TODO: service resource
 		p.l.Infof("source(pod): %s/%d, target(service): %s/%s", m.SourceIP, m.SourcePort, t.Namespace, t.Name)
 	default:

@@ -14,8 +14,8 @@ import (
 
 type Interface interface {
 	GetSysctlStat(pid uint32) (kprobesysctl.SysctlStat, error)
-	GetPodByUID(podUID string) (corev1.Pod, error)
-	GetService(ip string) (corev1.Service, error)
+	GetPodByUID(podUID string) (*corev1.Pod, error)
+	GetService(ip string) (*corev1.Service, error)
 	RegisterNetLinkListener() <-chan NeighLinkEvent
 	GetVethes() ([]NeighLink, error)
 }
@@ -85,11 +85,11 @@ func (p *provider) GetSysctlStat(pid uint32) (kprobesysctl.SysctlStat, error) {
 	return p.kprobeController.GetSysctlStat(pid)
 }
 
-func (p *provider) GetPodByUID(podUID string) (corev1.Pod, error) {
+func (p *provider) GetPodByUID(podUID string) (*corev1.Pod, error) {
 	return p.kprobeController.GetPodByUID(podUID)
 }
 
-func (p *provider) GetService(ip string) (corev1.Service, error) {
+func (p *provider) GetService(ip string) (*corev1.Service, error) {
 	return p.kprobeController.GetService(ip)
 }
 

@@ -73,8 +73,8 @@ func (p *provider) Gather(c chan *metric.Metric) {
 				continue
 			}
 			srcIP, dstIP := net.IP(event.OriSrc[:4]), net.IP(event.OriDst[:4])
-			replySrcIP, replyDstIP := net.IP(event.Dst[:4]), net.IP(event.Src[:4])
-			klog.Infof("srcIP: %s, srcPort: %d, dstIP: %s, dstPort: %d, reply srcIP :%s, reply dstIP: %s", srcIP, event.OriSport, dstIP, event.OriDport, replySrcIP, replyDstIP)
+			_, replyDstIP := net.IP(event.Dst[:4]), net.IP(event.Src[:4])
+			//klog.Infof("srcIP: %s, srcPort: %d, dstIP: %s, dstPort: %d, reply srcIP :%s, reply dstIP: %s", srcIP, event.OriSport, dstIP, event.OriDport, replySrcIP, replyDstIP)
 			natInfo := NatInfo{
 				OriDstIP:     dstIP.String(),
 				OriDstPort:   event.OriDport,

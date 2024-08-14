@@ -42,7 +42,9 @@ func NewController() Controller {
 }
 
 func (c *Controller) Start(ch chan *metric.Metric) {
-	go c.watchKprobe(ch)
+	if err := c.watchKprobe(ch); err != nil {
+		log.Panic(err)
+	}
 }
 
 func (c *Controller) watchKprobe(ch chan *metric.Metric) error {
@@ -62,10 +64,10 @@ func (c *Controller) GetSysctlStat(pid uint32) (kprobesysctl.SysctlStat, error) 
 	return c.sysctlController.GetSysctlStatByPID(pid)
 }
 
-func (c *Controller) GetPodByUID(podUID string) (corev1.Pod, error) {
+func (c *Controller) GetPodByUID(podUID string) (*corev1.Pod, error) {
 	return c.sysctlController.GetPodByUID(podUID)
 }
 
-func (c *Controller) GetService(ip string) (corev1.Service, error) {
+func (c *Controller) GetService(ip string) (*corev1.Service, error) {
 	return c.sysctlController.GetService(ip)
 }
