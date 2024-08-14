@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"k8s.io/klog"
 	"log"
 	"sync"
 	"syscall"
@@ -12,6 +11,8 @@ import (
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
+	"github.com/erda-project/ebpf-agent/pkg/btfs"
+	"k8s.io/klog"
 )
 
 const (
@@ -70,7 +71,11 @@ func NewEbpf(ifindex int, ip string, ch chan Metric) *Ebpf {
 func (e *Ebpf) Load(spec *ebpf.CollectionSpec) error {
 	klog.Infof("ip: %s, index: %d start rpc", e.IPaddress, e.IfIndex)
 	var err error
-	e.collection, err = ebpf.NewCollectionWithOptions(spec, ebpf.CollectionOptions{})
+	e.collection, err = ebpf.NewCollectionWithOptions(spec, ebpf.CollectionOptions{
+		Programs: ebpf.ProgramOptions{
+			KernelTypes: btfs.BtfSpec,
+		},
+	})
 	if err != nil {
 		return err
 	}

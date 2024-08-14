@@ -12,6 +12,7 @@ import (
 
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
+	"github.com/erda-project/ebpf-agent/pkg/btfs"
 	"k8s.io/klog"
 )
 
@@ -28,7 +29,11 @@ func WatchOOM(ch chan<- *OOMEvent) {
 		log.Fatal(err)
 	}
 
-	coll, err := ebpf.NewCollectionWithOptions(spec, ebpf.CollectionOptions{})
+	coll, err := ebpf.NewCollectionWithOptions(spec, ebpf.CollectionOptions{
+		Programs: ebpf.ProgramOptions{
+			KernelTypes: btfs.BtfSpec,
+		},
+	})
 	if err != nil {
 		log.Fatal(err)
 	}
