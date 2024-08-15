@@ -2,7 +2,6 @@ package kprobesysctl
 
 import (
 	"bufio"
-	"context"
 	"fmt"
 	"os"
 	"path"
@@ -13,7 +12,7 @@ import (
 
 	"github.com/prometheus/procfs"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/klog"
 )
 
@@ -156,51 +155,46 @@ func (k *KprobeSysctlController) refreshProcCgroupInfo() error {
 }
 
 func (k *KprobeSysctlController) refreshPodInfo() error {
-	pods, err := k.clientSet.CoreV1().Pods(metav1.NamespaceAll).List(context.Background(), metav1.ListOptions{})
+	pods, err := k.podLister.List(labels.Everything())
 	if err != nil {
 		return err
 	}
 
-	for i := range pods.Items {
+	for i := range pods {
 		// ignore evicted pods
-		if pods.Items[i].Status.Reason == "Evicted" {
+		if pods[i].Status.Reason == "Evicted" {
 			continue
 		}
-		k.podCache.Set(string(pods.Items[i].UID), pods.Items[i], 30*time.Minute)
-		k.podCache.Set(pods.Items[i].Status.PodIP, pods.Items[i], 30*time.Minute)
+		k.podCache.Set(string(pods[i].UID), pods[i], 30*time.Minute)
+		k.podCache.Set(pods[i].Status.PodIP, pods[i], 30*time.Minute)
 	}
 	return nil
 }
 
 func (k *KprobeSysctlController) refreshServiceInfo(s *corev1.Service) error {
-	refreshFunc := func(svc corev1.Service) {
+	refreshFunc := func(svc *corev1.Service) {
 		// ignore not ClusterIP and headless services
 		if (svc.Spec.Type != corev1.ServiceTypeClusterIP) || (svc.Spec.ClusterIP == corev1.ClusterIPNone) {
 			return
 		}
 
-		if svc.Spec.ClusterIP == "10.17.48.182" {
-			fmt.Println(fmt.Sprintf("0000000000xxxxxxxxxxxxx, ip: %s, svc: %s/%s", svc.Spec.ClusterIP,
-				svc.Namespace, svc.Name))
-		}
 		k.serviceCache.Set(svc.Spec.ClusterIP, svc, time.Hour)
 	}
 
 	// load all namespace.
 	if s == nil {
-		services, err := k.clientSet.CoreV1().Services(metav1.NamespaceAll).
-			List(context.Background(), metav1.ListOptions{})
+		services, err := k.serviceLister.List(labels.Everything())
 		if err != nil {
 			return err
 		}
 
-		for _, i := range services.Items {
-			refreshFunc(i)
+		for i := range services {
+			refreshFunc(services[i])
 		}
 		return nil
 	}
 
 	// load specific service.
-	refreshFunc(*s)
+	refreshFunc(s)
 	return nil
 }

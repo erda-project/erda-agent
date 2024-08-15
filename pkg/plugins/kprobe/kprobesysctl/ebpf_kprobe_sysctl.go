@@ -13,16 +13,18 @@ import (
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/link"
 	"github.com/cilium/ebpf/rlimit"
-	"github.com/erda-project/ebpf-agent/metric"
-	"github.com/erda-project/ebpf-agent/pkg/btfs"
-	"github.com/erda-project/ebpf-agent/pkg/envconf"
-	"github.com/erda-project/ebpf-agent/pkg/exporter/collector"
 	"github.com/patrickmn/go-cache"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/listers/core/v1"
 	clientgoCache "k8s.io/client-go/tools/cache"
 	"k8s.io/klog"
+
+	"github.com/erda-project/ebpf-agent/metric"
+	"github.com/erda-project/ebpf-agent/pkg/btfs"
+	"github.com/erda-project/ebpf-agent/pkg/envconf"
+	"github.com/erda-project/ebpf-agent/pkg/exporter/collector"
 )
 
 var (
@@ -32,13 +34,15 @@ var (
 )
 
 type KprobeSysctlController struct {
-	hostIP       string
-	sysCtlCache  *cache.Cache
-	podCache     *cache.Cache
-	serviceCache *cache.Cache
-	clientSet    *kubernetes.Clientset
-	reportClient *collector.ReportClient
-	objs         bpfObjects
+	hostIP        string
+	sysCtlCache   *cache.Cache
+	podCache      *cache.Cache
+	serviceCache  *cache.Cache
+	clientSet     *kubernetes.Clientset
+	podLister     v1.PodLister
+	serviceLister v1.ServiceLister
+	reportClient  *collector.ReportClient
+	objs          bpfObjects
 }
 
 func New(clientSet *kubernetes.Clientset) *KprobeSysctlController {
@@ -73,34 +77,28 @@ func (k *KprobeSysctlController) GetSysctlStatByPID(pid uint32) (SysctlStat, err
 	return SysctlStat{}, fmt.Errorf("failed to find sysctl stat for pid: %d", pid)
 }
 
-func (k *KprobeSysctlController) GetPodByUID(uid string) (corev1.Pod, error) {
+func (k *KprobeSysctlController) GetPodByUID(uid string) (*corev1.Pod, error) {
 	if pod, ok := k.podCache.Get(uid); ok {
-		return pod.(corev1.Pod), nil
+		return pod.(*corev1.Pod), nil
 	}
-	return corev1.Pod{}, fmt.Errorf("failed to find pod for uid: %s", uid)
+	return &corev1.Pod{}, fmt.Errorf("failed to find pod for uid: %s", uid)
 }
 
-func (k *KprobeSysctlController) GetService(ip string) (corev1.Service, error) {
+func (k *KprobeSysctlController) GetService(ip string) (*corev1.Service, error) {
 	if svc, ok := k.serviceCache.Get(ip); ok {
-		return svc.(corev1.Service), nil
+		return svc.(*corev1.Service), nil
 	}
-	return corev1.Service{}, fmt.Errorf("failed to get service from cache, ip: %s", ip)
+	return &corev1.Service{}, fmt.Errorf("failed to get service from cache, ip: %s", ip)
 }
 
 func (k *KprobeSysctlController) Start(ch chan<- *SysctlStat) error {
 	if err := k.refreshProcCgroupInfo(); err != nil {
 		return err
 	}
-	if err := k.refreshPodInfo(); err != nil {
-		return err
-	}
-	if err := k.refreshServiceInfo(nil); err != nil {
-		return err
-	}
 
 	factory := informers.NewSharedInformerFactory(k.clientSet, 0)
 	// pod informer
-	podInformerStopper := make(chan struct{})
+	stopper := make(chan struct{})
 	podInformer := factory.Core().V1().Pods().Informer()
 	podInformer.AddEventHandler(clientgoCache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
@@ -108,8 +106,8 @@ func (k *KprobeSysctlController) Start(ch chan<- *SysctlStat) error {
 			if newPod.Status.Reason == "Evicted" {
 				return
 			}
-			k.podCache.Set(string(newPod.UID), *newPod, 30*time.Minute)
-			k.podCache.Set(newPod.Status.PodIP, *newPod, 30*time.Minute)
+			k.podCache.Set(string(newPod.UID), newPod, 30*time.Minute)
+			k.podCache.Set(newPod.Status.PodIP, newPod, 30*time.Minute)
 		},
 		DeleteFunc: func(obj interface{}) {
 			pod := obj.(*corev1.Pod)
@@ -119,10 +117,8 @@ func (k *KprobeSysctlController) Start(ch chan<- *SysctlStat) error {
 		// UpdateFunc: func(oldObj interface{}, newObj interface{}) {
 		// },
 	})
-	go podInformer.Run(podInformerStopper)
 
 	// service informer
-	serviceInformerStopper := make(chan struct{})
 	serviceInformer := factory.Core().V1().Services().Informer()
 	serviceInformer.AddEventHandler(clientgoCache.ResourceEventHandlerFuncs{
 		AddFunc: func(obj interface{}) {
@@ -149,7 +145,18 @@ func (k *KprobeSysctlController) Start(ch chan<- *SysctlStat) error {
 		},
 	})
 
-	go serviceInformer.Run(serviceInformerStopper)
+	factory.Start(stopper)
+	factory.WaitForCacheSync(stopper)
+
+	k.podLister = factory.Core().V1().Pods().Lister()
+	k.serviceLister = factory.Core().V1().Services().Lister()
+
+	if err := k.refreshPodInfo(); err != nil {
+		return err
+	}
+	if err := k.refreshServiceInfo(nil); err != nil {
+		return err
+	}
 
 	// todo: add recover and context control
 	go func() {
@@ -270,7 +277,7 @@ func EncodeStat(stat *SysctlStat) []byte {
 	return w.Bytes()
 }
 
-func makeServiceNodeMetric(pod corev1.Pod) *metric.Metric {
+func makeServiceNodeMetric(pod *corev1.Pod) *metric.Metric {
 	now := time.Now().Unix()
 	return &metric.Metric{
 		Measurement: "application_service_node",
@@ -314,7 +321,7 @@ func (k *KprobeSysctlController) updateServiceNode() error {
 	podItems := k.podCache.Items()
 	serviceNodes := make([]*metric.Metric, 0)
 	for _, item := range podItems {
-		pod, ok := item.Object.(corev1.Pod)
+		pod, ok := item.Object.(*corev1.Pod)
 		if !ok {
 			continue
 		}

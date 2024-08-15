@@ -100,7 +100,7 @@ func (c *Controller) watchForOoms(ch chan *metric.Metric) error {
 	return nil
 }
 
-func (c *Controller) convertOomEvent2Metric(event *oomprocesser2.OOMEvent, pod v1.Pod, stat kprobesysctl.SysctlStat) metric.Metric {
+func (c *Controller) convertOomEvent2Metric(event *oomprocesser2.OOMEvent, pod *v1.Pod, stat kprobesysctl.SysctlStat) metric.Metric {
 	var metric metric.Metric
 	metric.Measurement = "docker_container_summary"
 	metric.Name = "docker_container_summary"
