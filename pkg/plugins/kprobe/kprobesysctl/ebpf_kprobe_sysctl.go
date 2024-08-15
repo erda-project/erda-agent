@@ -325,7 +325,7 @@ func (k *KprobeSysctlController) updateServiceNode() error {
 		if !ok {
 			continue
 		}
-		if pod.Status.HostIP != k.hostIP || len(pod.Labels["DICE_SERVICE"]) == 0 {
+		if len(pod.Labels["DICE_SERVICE"]) == 0 {
 			continue
 		}
 		m := makeServiceNodeMetric(pod)
