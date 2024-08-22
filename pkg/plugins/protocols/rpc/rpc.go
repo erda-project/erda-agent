@@ -226,7 +226,8 @@ func (p *provider) convertRpc2Metric(m *rpcebpf.Metric) metric.Metric {
 		res.Tags["source_runtime_id"] = sourcePod.Labels["DICE_RUNTIME_ID"]
 		res.Tags["source_runtime_name"] = sourcePod.Annotations["msp.erda.cloud/runtime_name"]
 		//res.Tags["source_service_id"] = fmt.Sprintf("%s_%s_%s", sourcePod.Labels["DICE_APPLICATION_ID"], sourcePod.Annotations["msp.erda.cloud/runtime_name"], sourcePod.Labels["DICE_SERVICE_NAME"])
-		res.Tags["source_service_id"] = sourcePod.Annotations["msp.erda.cloud/service_name"]
+		//res.Tags["source_service_id"] = sourcePod.Annotations["msp.erda.cloud/service_name"]
+		res.Tags["source_service_id"] = fmt.Sprintf("%s_%s_%s", sourcePod.Annotations["msp.erda.cloud/application_id"], sourcePod.Annotations["msp.erda.cloud/runtime_name"], sourcePod.Annotations["msp.erda.cloud/service_name"])
 		res.Tags["source_service_name"] = sourcePod.Annotations["msp.erda.cloud/service_name"]
 		res.Tags["source_workspace"] = sourcePod.Annotations["msp.erda.cloud/workspace"]
 		res.Tags["source_terminus_key"] = sourcePod.Annotations["msp.erda.cloud/terminus_key"]
@@ -253,7 +254,8 @@ func (p *provider) convertRpc2Metric(m *rpcebpf.Metric) metric.Metric {
 		res.Tags["target_runtime_id"] = targetPod.Labels["DICE_RUNTIME_ID"]
 		res.Tags["target_runtime_name"] = targetPod.Annotations["msp.erda.cloud/runtime_name"]
 		//res.Tags["target_service_id"] = fmt.Sprintf("%s_%s_%s", targetPod.Labels["DICE_APPLICATION_ID"], targetPod.Annotations["msp.erda.cloud/runtime_name"], targetPod.Labels["DICE_SERVICE_NAME"])
-		res.Tags["target_service_id"] = targetPod.Annotations["msp.erda.cloud/service_name"]
+		//res.Tags["target_service_id"] = targetPod.Annotations["msp.erda.cloud/service_name"]
+		res.Tags["target_service_id"] = fmt.Sprintf("%s_%s_%s", targetPod.Annotations["msp.erda.cloud/application_id"], targetPod.Annotations["msp.erda.cloud/runtime_name"], targetPod.Annotations["msp.erda.cloud/service_name"])
 		res.Tags["target_service_instance_id"] = string(targetPod.UID)
 		res.Tags["target_service_name"] = targetPod.Annotations["msp.erda.cloud/service_name"]
 		res.Tags["target_terminus_key"] = targetPod.Annotations["msp.erda.cloud/terminus_key"]

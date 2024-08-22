@@ -147,7 +147,8 @@ func (p *provider) convert2Metric(ev Event) *metric.Metric {
 		m.Tags["source_runtime_name"] = sourcePod.Annotations["msp.erda.cloud/runtime_name"]
 		//output.Tags["source_service_id"] = fmt.Sprintf("%s_%s_%s",
 		//	sourcePod.Labels["DICE_APPLICATION_ID"], sourcePod.Annotations["msp.erda.cloud/runtime_name"], sourcePod.Labels["DICE_SERVICE_NAME"])
-		m.Tags["source_service_id"] = sourcePod.Annotations["msp.erda.cloud/service_name"]
+		//m.Tags["source_service_id"] = sourcePod.Annotations["msp.erda.cloud/service_name"]
+		m.Tags["source_service_id"] = fmt.Sprintf("%s_%s_%s", sourcePod.Annotations["msp.erda.cloud/application_id"], sourcePod.Annotations["msp.erda.cloud/runtime_name"], sourcePod.Annotations["msp.erda.cloud/service_name"])
 		m.Tags["source_service_instance_id"] = string(sourcePod.UID)
 		m.Tags["source_service_name"] = sourcePod.Annotations["msp.erda.cloud/service_name"]
 		m.Tags["source_terminus_key"] = sourcePod.Annotations["msp.erda.cloud/terminus_key"]
@@ -192,7 +193,8 @@ func (p *provider) convert2Metric(ev Event) *metric.Metric {
 		m.Tags["target_runtime_name"] = t.Annotations["msp.erda.cloud/runtime_name"]
 		//output.Tags["target_service_id"] = fmt.Sprintf("%s_%s_%s",
 		//	t.Labels["DICE_APPLICATION_ID"], t.Annotations["msp.erda.cloud/runtime_name"], t.Labels["DICE_SERVICE_NAME"])
-		m.Tags["target_service_id"] = t.Annotations["msp.erda.cloud/service_name"]
+		//m.Tags["target_service_id"] = t.Annotations["msp.erda.cloud/service_name"]
+		m.Tags["target_service_id"] = fmt.Sprintf("%s_%s_%s", t.Annotations["msp.erda.cloud/application_id"], t.Annotations["msp.erda.cloud/runtime_name"], t.Annotations["msp.erda.cloud/service_name"])
 		m.Tags["target_service_instance_id"] = string(t.UID)
 		m.Tags["target_service_name"] = t.Annotations["msp.erda.cloud/service_name"]
 		m.Tags["target_terminus_key"] = t.Annotations["msp.erda.cloud/terminus_key"]
