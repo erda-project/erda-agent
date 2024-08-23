@@ -1,9 +1,10 @@
 package kprobe
 
 import (
+	"net"
+
 	"github.com/vishvananda/netlink"
 	"golang.org/x/sys/unix"
-	"net"
 )
 
 type LinkEventType string
@@ -23,16 +24,47 @@ type NeighLinkEvent struct {
 	NeighLink
 }
 
-func getAllVethes() ([]NeighLink, error) {
+// GetAllVethes get all bridge veth like docker0, cni0 instead of vethxxx, in this way, we can mount fewer socket network cards.
+func GetAllVethes() ([]NeighLink, error) {
 	links, err := netlink.LinkList()
 	if err != nil {
 		return nil, err
 	}
+	//targetLinks := make([]netlink.Link, 0)
+	ipipLinks := make([]NeighLink, 0)
+	bridgeLinks := make([]NeighLink, 0)
+	for _, link := range links {
+		if link.Type() == "ipip" {
+			ipipLinks = append(ipipLinks, NeighLink{
+				Neigh: netlink.Neigh{
+					IP: net.IP{0, 0, 0, 0},
+				},
+				Link: link,
+			})
+			break
+		}
+		if link.Type() == "bridge" {
+			bridgeLinks = append(bridgeLinks, NeighLink{
+				Neigh: netlink.Neigh{
+					IP: net.IP{0, 0, 0, 0},
+				},
+				Link: link,
+			})
+		}
+		//if link.Type() == "veth" {
+		//	targetLinks = append(targetLinks, link)
+		//}
+	}
+	if len(ipipLinks) > 0 {
+		return ipipLinks, nil
+	}
+	if len(bridgeLinks) > 0 {
+		return bridgeLinks, nil
+	}
+
+	// if no bridge or ipip link, use veth link
 	targetLinks := make([]netlink.Link, 0)
 	for _, link := range links {
-		if link.Type() == "bridge" {
-			targetLinks = append(targetLinks, link)
-		}
 		if link.Type() == "veth" {
 			targetLinks = append(targetLinks, link)
 		}
@@ -62,7 +94,7 @@ func getAllVethes() ([]NeighLink, error) {
 				if err != nil {
 					continue
 				}
-				if link.Type() == "veth" {
+				if link.Type() == "bridge" {
 					neighBr, errBr := netlink.NeighList(link.Attrs().Index, int(unix.AF_BRIDGE))
 					if errBr != nil {
 						continue
@@ -84,7 +116,7 @@ func getAllVethes() ([]NeighLink, error) {
 }
 
 func (p *provider) getVethesDiff() (added []NeighLink, removed []NeighLink, err error) {
-	neighs, err := getAllVethes()
+	neighs, err := GetAllVethes()
 	if err != nil {
 		return nil, nil, err
 	}

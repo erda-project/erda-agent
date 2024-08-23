@@ -31,7 +31,7 @@ type provider struct {
 func (p *provider) Init(ctx servicehub.Context) error {
 	p.kprobeController = controller.NewController()
 	p.netLinks = make(map[int]NeighLink)
-	neighs, err := getAllVethes()
+	neighs, err := GetAllVethes()
 	if err != nil {
 		return err
 	}

@@ -42,6 +42,9 @@ enum eth_ip_type {
 
 #define MYSQL_ERROR_MESSAGE_MAX_SIZE 10
 
+#define IP_IN_IP_L3_PROTO 2654
+#define IP_IN_IP_OUTER_HEADER_SIZE 20
+
 struct rpc_package_t {
     __u32 rpc_type; // 4
 	__u32 phase; // 8
@@ -505,10 +508,16 @@ static __always_inline bool is_http2_preface(const char* buf, __u32 buf_size) {
 
 __maybe_unused static __always_inline __u64 read_conn_tuple_skb(struct __sk_buff *skb, skb_info_t *info, conn_tuple_t *tup) {
     bpf_memset(info, 0, sizeof(skb_info_t));
-    info->data_off = ETH_HLEN;
+//    info->data_off = ETH_HLEN;
 
     __u16 l3_proto = load_half(skb, offsetof(struct ethhdr, h_proto));
-    info->data_end = ETH_HLEN;
+//    info->data_end = ETH_HLEN;
+    if (l3_proto == IP_IN_IP_L3_PROTO) {
+        l3_proto = ETH_P_IP;
+    } else {
+        info->data_off = ETH_HLEN;
+        info->data_end = ETH_HLEN;
+    }
     __u8 l4_proto = 0;
     switch (l3_proto) {
     case ETH_P_IP:

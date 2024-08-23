@@ -83,9 +83,9 @@ int kretprobe_nf_nat_setup_info(uint ret) {
         return 0;
     }
     // ignore same ip
-//    if (originTuple.dst.u3.ip == replyTuple.src.u3.ip) {
-//        return 0;
-//    }
+    if (originTuple.dst.u3.ip == replyTuple.src.u3.ip) {
+        return 0;
+    }
     struct nf_tuple conn_ev = {
         .sport = bpf_ntohs(replyTuple.src.u.tcp.port),
         .dport = bpf_ntohs(replyTuple.dst.u.tcp.port),

@@ -127,11 +127,11 @@ int rpc__filter_package(struct __sk_buff *skb)
         pkg.pid = pid_info->pid;
     }
     if (pkg.phase == P_REQUEST) {
-        __u32 ip;
-        ip = __get_target_ip();
-        if (ip != 0 && ip != pkg.srcIP) {
-            return 0;
-        }
+//        __u32 ip;
+//        ip = __get_target_ip();
+//        if (ip != 0 && ip != pkg.srcIP) {
+//            return 0;
+//        }
         sock_key req_conn = {0};
         req_conn.srcIP = pkg.srcIP;
         req_conn.dstIP = pkg.dstIP;

@@ -202,9 +202,9 @@ static __always_inline void read_http_info(struct __sk_buff *skb, conn_tuple_t *
     // Logical processing based on the phase.
     switch (phase) {
         case HTTP_REQUEST: {
-            if (bpf_map_lookup_elem(&filter_map, &conn_key.srcIP) == NULL) {
-                return;
-            }
+//            if (bpf_map_lookup_elem(&filter_map, &conn_key.srcIP) == NULL) {
+//                return;
+//            }
 
             if (method == HTTP_METHOD_UNKNOWN) {
                 return;
