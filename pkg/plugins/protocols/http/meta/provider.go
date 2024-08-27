@@ -5,13 +5,13 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/erda-project/erda-infra/base/logs"
 	corev1 "k8s.io/api/core/v1"
 
 	"github.com/erda-project/ebpf-agent/metric"
 	"github.com/erda-project/ebpf-agent/pkg/plugins/kprobe"
 	"github.com/erda-project/ebpf-agent/pkg/plugins/netfilter"
 	"github.com/erda-project/ebpf-agent/pkg/plugins/protocols/http/ebpf"
+	"github.com/erda-project/erda-infra/base/logs"
 )
 
 const (
@@ -39,7 +39,7 @@ func New(l logs.Logger, k kprobe.Interface, n netfilter.Interface) Interface {
 }
 
 func (p *provider) Convert(m *ebpf.Metric) *metric.Metric {
-	p.l.Infof("gonna to convert metrics: %+v", m)
+	p.l.Debugf("gonna to convert metrics: %+v", m)
 	measurement := measurementGroup
 	output := &metric.Metric{
 		Timestamp: time.Now().UnixNano(),
@@ -65,7 +65,7 @@ func (p *provider) Convert(m *ebpf.Metric) *metric.Metric {
 			"elapsed_mean":  m.Duration,
 		},
 	}
-	p.l.Infof("ebpf metrics: %s", m.String())
+	p.l.Debugf("ebpf metrics: %s", m.String())
 
 	if m.StatusCode >= 400 {
 		measurement = measurementGroupError
@@ -119,14 +119,14 @@ func (p *provider) Convert(m *ebpf.Metric) *metric.Metric {
 
 	// external target
 	if target == nil {
-		p.l.Infof("source: %s/%d, target(external): %s", m.SourceIP, m.SourcePort, m.DestIP)
+		p.l.Debugf("source: %s/%d, target(external): %s", m.SourceIP, m.SourcePort, m.DestIP)
 		return nil
 	}
 
 	// in cluster
 	switch t := target.(type) {
 	case *corev1.Pod:
-		p.l.Infof("source(pod): %s/%d, target(pod): %s/%s", m.SourceIP, m.SourcePort, t.Namespace, t.Name)
+		p.l.Debugf("source(pod): %s/%d, target(pod): %s/%s", m.SourceIP, m.SourcePort, t.Namespace, t.Name)
 		output.Tags["cluster_name"] = t.Labels["DICE_CLUSTER_NAME"]
 		output.Tags["db_host"] = fmt.Sprintf("%s:%d", m.DestIP, m.DestPort)
 		output.Tags["org_name"] = t.Labels["DICE_ORG_NAME"]
@@ -155,7 +155,7 @@ func (p *provider) Convert(m *ebpf.Metric) *metric.Metric {
 		output.Tags["target_workspace"] = t.Annotations["msp.erda.cloud/workspace"]
 	case *corev1.Service:
 		// TODO: service resource
-		p.l.Infof("source(pod): %s/%d, target(service): %s/%s", m.SourceIP, m.SourcePort, t.Namespace, t.Name)
+		p.l.Debugf("source(pod): %s/%d, target(service): %s/%s", m.SourceIP, m.SourcePort, t.Namespace, t.Name)
 	default:
 		p.l.Errorf("unknown target type: %T", target)
 	}

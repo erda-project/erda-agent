@@ -114,7 +114,7 @@ func (p *provider) Gather(c chan *metric.Metric) {
 				//p.Log.Infof("recive metric: %+v", m.String())
 				export := p.meta.Convert(&m)
 				if export != nil {
-					p.Log.Infof("recive metric: %+v", export.String())
+					p.Log.Debugf("recive metric: %+v", export.String())
 					c <- export
 				}
 			}
