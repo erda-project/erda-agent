@@ -111,16 +111,17 @@ func (e *provider) FanInMetric(m *ebpf.Map) {
 	)
 	for {
 		for m.Iterate().Next(&key, &val) {
-			metric, err := DecodeMetrics(&key, &val)
-			if err != nil {
-				klog.Errorf("decode metrics error: %v", err)
-			}
-			e.ch <- *metric
 			// clean map
 			if err := m.Delete(key); err != nil {
 				klog.Errorf("delete map error: %v", err)
 				continue
 			}
+			metric, err := DecodeMetrics(&key, &val)
+			if err != nil {
+				klog.Errorf("decode metrics error: %v", err)
+				continue
+			}
+			e.ch <- *metric
 		}
 		time.Sleep(1 * time.Second)
 	}
