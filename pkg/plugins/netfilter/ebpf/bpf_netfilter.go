@@ -17,7 +17,7 @@ func RunEbpf() *NetfilterObjects {
 	var bpfObj NetfilterObjects
 	if err := spec.LoadAndAssign(&bpfObj, &ebpf.CollectionOptions{
 		Programs: ebpf.ProgramOptions{
-			LogSize:     ebpf.DefaultVerifierLogSize * 10,
+			LogSize:     ebpf.DefaultVerifierLogSize,
 			KernelTypes: btfs.BtfSpec,
 		},
 	}); err != nil {
@@ -59,8 +59,8 @@ type netfilterSpecs struct {
 }
 
 type netfilterProgramSpecs struct {
-	K_iptDoTable *ebpf.ProgramSpec `ebpf:"kprobe_ipt_do_table"`
-	KrIptDoTable *ebpf.ProgramSpec `ebpf:"kretprobe_ipt_do_table"`
+	//K_iptDoTable *ebpf.ProgramSpec `ebpf:"kprobe_ipt_do_table"`
+	//KrIptDoTable *ebpf.ProgramSpec `ebpf:"kretprobe_ipt_do_table"`
 	//K_ipForward     *ebpf.ProgramSpec `ebpf:"kprobe_ip_forward"`
 	//Kr_ipForward    *ebpf.ProgramSpec `ebpf:"kretprobe_ip_forward"`
 	K_natSetUpInfo  *ebpf.ProgramSpec `ebpf:"kprobe_nf_nat_setup_info"`
@@ -69,10 +69,10 @@ type netfilterProgramSpecs struct {
 
 type netfilterMapSpecs struct {
 	EventBuf *ebpf.MapSpec `ebpf:"event_buf"`
-	IptMaps  *ebpf.MapSpec `ebpf:"ipt_maps"`
+	//IptMaps  *ebpf.MapSpec `ebpf:"ipt_maps"`
 	//IpRcvMaps  *ebpf.MapSpec `ebpf:"ip_rcv_maps"`
-	NfConnMaps *ebpf.MapSpec `ebpf:"conn_maps"`
-	NfConnBuf  *ebpf.MapSpec `ebpf:"nf_conn_maps"`
+	//NfConnMaps *ebpf.MapSpec `ebpf:"conn_maps"`
+	//NfConnBuf  *ebpf.MapSpec `ebpf:"nf_conn_maps"`
 }
 
 type NetfilterObjects struct {
@@ -88,26 +88,26 @@ func (o *NetfilterObjects) Close() error {
 }
 
 type netfilterMaps struct {
-	EventBuf *ebpf.Map `ebpf:"event_buf"`
-	IptMaps  *ebpf.Map `ebpf:"ipt_maps"`
+	//EventBuf *ebpf.Map `ebpf:"event_buf"`
+	//IptMaps  *ebpf.Map `ebpf:"ipt_maps"`
 	//IpRcvMaps  *ebpf.Map `ebpf:"ip_rcv_maps"`
-	NfConnMaps *ebpf.Map `ebpf:"conn_maps"`
-	NfConnBuf  *ebpf.Map `ebpf:"nf_conn_maps"`
+	//NfConnMaps *ebpf.Map `ebpf:"conn_maps"`
+	NfConnBuf *ebpf.Map `ebpf:"nf_conn_maps"`
 }
 
 func (m *netfilterMaps) Close() error {
 	return _NetfilterClose(
-		m.EventBuf,
-		m.IptMaps,
+		//m.EventBuf,
+		//m.IptMaps,
 		//m.IpRcvMaps,
-		m.NfConnMaps,
+		//m.NfConnMaps,
 		m.NfConnBuf,
 	)
 }
 
 type netfilterPrograms struct {
-	K_iptDoTable *ebpf.Program `ebpf:"kprobe_ipt_do_table"`
-	KrIptDoTable *ebpf.Program `ebpf:"kretprobe_ipt_do_table"`
+	//K_iptDoTable *ebpf.Program `ebpf:"kprobe_ipt_do_table"`
+	//KrIptDoTable *ebpf.Program `ebpf:"kretprobe_ipt_do_table"`
 	//K_ipFroward     *ebpf.Program `ebpf:"kprobe_ip_forward"`
 	//Kr_ipFroward    *ebpf.Program `ebpf:"kretprobe_ip_forward""`
 	K_natSetUpInfo  *ebpf.Program `ebpf:"kprobe_nf_nat_setup_info"`
@@ -116,8 +116,8 @@ type netfilterPrograms struct {
 
 func (p *netfilterPrograms) Close() error {
 	return _NetfilterClose(
-		p.K_iptDoTable,
-		p.KrIptDoTable,
+		//p.K_iptDoTable,
+		//p.KrIptDoTable,
 		//p.K_ipFroward,
 		//p.Kr_ipFroward,
 		p.K_natSetUpInfo,

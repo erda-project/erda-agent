@@ -77,7 +77,7 @@ func (p *provider) Convert(m *ebpf.Metric) *metric.Metric {
 
 	sourcePod, err := p.kprobeHelper.GetPodByUID(m.SourceIP)
 	if err != nil {
-		p.l.Errorf("failed to get pod by uid: %s, err: %v", m.SourceIP, err)
+		p.l.Debugf("failed to get pod by uid: %s, err: %v", m.SourceIP, err)
 	} else {
 		// source platform metadata
 		output.OrgName = sourcePod.Labels["DICE_ORG_NAME"]
