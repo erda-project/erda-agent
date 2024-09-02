@@ -58,12 +58,13 @@ func (p *provider) Gather(c chan *metric.Metric) {
 	}
 	defer krpNat.Close()
 
+	connMap := obj.NfConnBuf
+	var (
+		key uint64
+		val []byte
+	)
 	for {
-		var (
-			key uint64
-			val []byte
-		)
-		for obj.NfConnBuf.Iterate().Next(&key, &val) {
+		for connMap.Iterate().Next(&key, &val) {
 			if err := obj.NfConnBuf.Delete(key); err != nil {
 				panic(err)
 			}
@@ -83,6 +84,7 @@ func (p *provider) Gather(c chan *metric.Metric) {
 			}
 			p.natCache.Set(fmt.Sprintf("%s:%d", srcIP, event.OriSport), natInfo, time.Minute)
 		}
+		time.Sleep(100 * time.Millisecond)
 	}
 }
 

@@ -55,8 +55,11 @@ static __always_inline bool fill_event_info(struct event_t *event, struct sk_buf
 SEC("kprobe/nf_nat_setup_info")
 int kprobe_nf_nat_setup_info(struct pt_regs *ctx) {
     u64 pid_tgid;
-    struct nf_conn *conn = (struct nf_conn *)PT_REGS_PARM1(ctx);
     pid_tgid = bpf_get_current_pid_tgid();
+    if (pid_tgid == 0) {
+        return 0;
+    }
+    struct nf_conn *conn = (struct nf_conn *)PT_REGS_PARM1(ctx);
     struct nf_conn_info_t args = {
         .conn_ptr = (u64)conn,
     };
@@ -68,6 +71,9 @@ SEC("kretprobe/nf_nat_setup_info")
 int kretprobe_nf_nat_setup_info(uint ret) {
     u64 pid_tgid;
     pid_tgid = bpf_get_current_pid_tgid();
+    if (pid_tgid == 0) {
+        return 0;
+    }
     struct nf_conn_info_t *args = bpf_map_lookup_elem(&conn_maps, &pid_tgid);
     if (args == NULL) {
         return 0;
