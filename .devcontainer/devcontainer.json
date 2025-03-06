@@ -1,0 +1,8 @@
+{
+  name: "erda-agent-devcontainer",
+  image: "registry.erda.cloud/erda/ebpf-devel:v0.4",
+  "runArgs": [
+    "--privileged"
+  ],
+  privileged: true,
+}
