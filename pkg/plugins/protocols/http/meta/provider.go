@@ -7,10 +7,10 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 
-	"github.com/erda-project/ebpf-agent/metric"
-	"github.com/erda-project/ebpf-agent/pkg/plugins/kprobe"
-	"github.com/erda-project/ebpf-agent/pkg/plugins/netfilter"
-	"github.com/erda-project/ebpf-agent/pkg/plugins/protocols/http/ebpf"
+	"github.com/erda-project/erda-agent/metric"
+	"github.com/erda-project/erda-agent/pkg/plugins/kprobe"
+	"github.com/erda-project/erda-agent/pkg/plugins/netfilter"
+	"github.com/erda-project/erda-agent/pkg/plugins/protocols/http/ebpf"
 	"github.com/erda-project/erda-infra/base/logs"
 )
 

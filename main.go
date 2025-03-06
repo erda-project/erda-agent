@@ -4,14 +4,14 @@ import (
 	_ "embed"
 	_ "net/http/pprof"
 
-	_ "github.com/erda-project/ebpf-agent/pkg/controller"
-	_ "github.com/erda-project/ebpf-agent/pkg/plugins/kprobe"
-	_ "github.com/erda-project/ebpf-agent/pkg/plugins/memory"
-	_ "github.com/erda-project/ebpf-agent/pkg/plugins/netfilter"
-	_ "github.com/erda-project/ebpf-agent/pkg/plugins/protocols/http"
-	_ "github.com/erda-project/ebpf-agent/pkg/plugins/protocols/kafka"
-	_ "github.com/erda-project/ebpf-agent/pkg/plugins/protocols/rpc"
-	_ "github.com/erda-project/ebpf-agent/pkg/plugins/traffic"
+	_ "github.com/erda-project/erda-agent/pkg/controller"
+	_ "github.com/erda-project/erda-agent/pkg/plugins/kprobe"
+	_ "github.com/erda-project/erda-agent/pkg/plugins/memory"
+	_ "github.com/erda-project/erda-agent/pkg/plugins/netfilter"
+	_ "github.com/erda-project/erda-agent/pkg/plugins/protocols/http"
+	_ "github.com/erda-project/erda-agent/pkg/plugins/protocols/kafka"
+	_ "github.com/erda-project/erda-agent/pkg/plugins/protocols/rpc"
+	_ "github.com/erda-project/erda-agent/pkg/plugins/traffic"
 	"github.com/erda-project/erda-infra/base/servicehub"
 )
 

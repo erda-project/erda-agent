@@ -6,9 +6,9 @@ import (
 	"k8s.io/apimachinery/pkg/util/runtime"
 	"k8s.io/klog"
 
-	"github.com/erda-project/ebpf-agent/pkg/plugins/kprobe"
-	ebpf2 "github.com/erda-project/ebpf-agent/pkg/plugins/protocols/http/ebpf"
-	"github.com/erda-project/ebpf-agent/pkg/plugins/traffic/ebpf"
+	"github.com/erda-project/erda-agent/pkg/plugins/kprobe"
+	ebpf2 "github.com/erda-project/erda-agent/pkg/plugins/protocols/http/ebpf"
+	"github.com/erda-project/erda-agent/pkg/plugins/traffic/ebpf"
 )
 
 type Controller struct {

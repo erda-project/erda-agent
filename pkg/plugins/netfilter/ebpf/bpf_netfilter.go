@@ -6,8 +6,7 @@ import (
 	"io"
 
 	"github.com/cilium/ebpf"
-
-	"github.com/erda-project/ebpf-agent/pkg/btfs"
+	"github.com/erda-project/erda-agent/pkg/btfs"
 )
 
 func RunEbpf() *NetfilterObjects {

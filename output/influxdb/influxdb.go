@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/erda-project/ebpf-agent/metric"
+	"github.com/erda-project/erda-agent/metric"
 
 	influxdb2 "github.com/influxdata/influxdb-client-go/v2"
 	influxdb2api "github.com/influxdata/influxdb-client-go/v2/api"

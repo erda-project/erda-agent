@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/erda-project/ebpf-agent/metric"
+	"github.com/erda-project/erda-agent/metric"
 )
 
 type config struct {
