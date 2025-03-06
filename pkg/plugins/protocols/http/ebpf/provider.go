@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/cilium/ebpf"
-	"github.com/erda-project/ebpf-agent/pkg/btfs"
+	"github.com/erda-project/erda-agent/pkg/btfs"
 	"k8s.io/klog/v2"
 
-	"github.com/erda-project/ebpf-agent/pkg/utils"
+	"github.com/erda-project/erda-agent/pkg/utils"
 )
 
 const (

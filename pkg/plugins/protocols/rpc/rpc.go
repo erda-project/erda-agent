@@ -9,10 +9,10 @@ import (
 	"time"
 
 	"github.com/cilium/ebpf"
-	"github.com/erda-project/ebpf-agent/metric"
-	"github.com/erda-project/ebpf-agent/pkg/plugins/kprobe"
-	"github.com/erda-project/ebpf-agent/pkg/plugins/netfilter"
-	rpcebpf "github.com/erda-project/ebpf-agent/pkg/plugins/protocols/rpc/ebpf"
+	"github.com/erda-project/erda-agent/metric"
+	"github.com/erda-project/erda-agent/pkg/plugins/kprobe"
+	"github.com/erda-project/erda-agent/pkg/plugins/netfilter"
+	rpcebpf "github.com/erda-project/erda-agent/pkg/plugins/protocols/rpc/ebpf"
 	"github.com/erda-project/erda-infra/base/servicehub"
 	"k8s.io/klog/v2"
 )

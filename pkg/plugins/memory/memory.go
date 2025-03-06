@@ -1,9 +1,9 @@
 package memory
 
 import (
-	"github.com/erda-project/ebpf-agent/metric"
-	"github.com/erda-project/ebpf-agent/pkg/plugins/kprobe"
-	"github.com/erda-project/ebpf-agent/pkg/plugins/memory/controller"
+	"github.com/erda-project/erda-agent/metric"
+	"github.com/erda-project/erda-agent/pkg/plugins/kprobe"
+	"github.com/erda-project/erda-agent/pkg/plugins/memory/controller"
 	"github.com/erda-project/erda-infra/base/servicehub"
 )
 

@@ -1,6 +1,6 @@
 package controller
 
-import "github.com/erda-project/ebpf-agent/metric"
+import "github.com/erda-project/erda-agent/metric"
 
 type Plugin interface {
 	Gather(c chan *metric.Metric)

@@ -6,11 +6,11 @@ import (
 
 	"k8s.io/klog"
 
-	"github.com/erda-project/ebpf-agent/metric"
-	"github.com/erda-project/ebpf-agent/pkg/plugins/kprobe"
-	"github.com/erda-project/ebpf-agent/pkg/plugins/traffic/controller"
-	"github.com/erda-project/ebpf-agent/pkg/plugins/traffic/ebpf"
-	"github.com/erda-project/ebpf-agent/pkg/plugins/traffic/red"
+	"github.com/erda-project/erda-agent/metric"
+	"github.com/erda-project/erda-agent/pkg/plugins/kprobe"
+	"github.com/erda-project/erda-agent/pkg/plugins/traffic/controller"
+	"github.com/erda-project/erda-agent/pkg/plugins/traffic/ebpf"
+	"github.com/erda-project/erda-agent/pkg/plugins/traffic/red"
 	"github.com/erda-project/erda-infra/base/servicehub"
 )
 

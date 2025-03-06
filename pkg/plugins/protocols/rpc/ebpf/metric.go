@@ -12,8 +12,8 @@ import (
 
 	"k8s.io/klog"
 
-	"github.com/erda-project/ebpf-agent/metric"
-	"github.com/erda-project/ebpf-agent/pkg/hpack"
+	"github.com/erda-project/erda-agent/metric"
+	"github.com/erda-project/erda-agent/pkg/hpack"
 )
 
 type RpcType string

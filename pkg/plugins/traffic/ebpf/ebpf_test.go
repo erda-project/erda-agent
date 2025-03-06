@@ -13,7 +13,7 @@ import (
 	"github.com/cilium/ebpf"
 	"github.com/cilium/ebpf/rlimit"
 
-	ebpf2 "github.com/erda-project/ebpf-agent/pkg/plugins/protocols/http/ebpf"
+	ebpf2 "github.com/erda-project/erda-agent/pkg/plugins/protocols/http/ebpf"
 )
 
 func TestEbpf(t *testing.T) {
