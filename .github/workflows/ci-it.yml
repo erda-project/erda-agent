@@ -22,7 +22,7 @@ jobs:
   CODE-CHECK:
     runs-on: ubuntu-latest
     container:
-      image: registry.erda.cloud/erda/ebpf-devel:v0.3
+      image: registry.erda.cloud/erda/ebpf-devel:v0.4
     steps:
       - uses: actions/checkout@v2
       - name: Run go mod tidy

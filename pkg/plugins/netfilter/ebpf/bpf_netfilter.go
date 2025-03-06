@@ -17,7 +17,6 @@ func RunEbpf() *NetfilterObjects {
 	var bpfObj NetfilterObjects
 	if err := spec.LoadAndAssign(&bpfObj, &ebpf.CollectionOptions{
 		Programs: ebpf.ProgramOptions{
-			LogSize:     ebpf.DefaultVerifierLogSize,
 			KernelTypes: btfs.BtfSpec,
 		},
 	}); err != nil {
