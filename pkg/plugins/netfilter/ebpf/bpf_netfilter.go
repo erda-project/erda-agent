@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/cilium/ebpf"
+
 	"github.com/erda-project/ebpf-agent/pkg/btfs"
 )
 
@@ -17,7 +18,6 @@ func RunEbpf() *NetfilterObjects {
 	var bpfObj NetfilterObjects
 	if err := spec.LoadAndAssign(&bpfObj, &ebpf.CollectionOptions{
 		Programs: ebpf.ProgramOptions{
-			LogSize:     ebpf.DefaultVerifierLogSize,
 			KernelTypes: btfs.BtfSpec,
 		},
 	}); err != nil {
