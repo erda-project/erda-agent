@@ -11,9 +11,9 @@ import (
 	"github.com/cilium/ebpf/rlimit"
 	"k8s.io/klog"
 
-	"github.com/erda-project/ebpf-agent/metric"
-	"github.com/erda-project/ebpf-agent/pkg/envconf"
-	"github.com/erda-project/ebpf-agent/pkg/exporter/collector"
+	"github.com/erda-project/erda-agent/metric"
+	"github.com/erda-project/erda-agent/pkg/envconf"
+	"github.com/erda-project/erda-agent/pkg/exporter/collector"
 	"github.com/erda-project/erda-infra/base/servicehub"
 )
 

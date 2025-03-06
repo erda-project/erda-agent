@@ -10,7 +10,7 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/erda-project/ebpf-agent/metric"
+	"github.com/erda-project/erda-agent/metric"
 )
 
 type ConnInfo struct {

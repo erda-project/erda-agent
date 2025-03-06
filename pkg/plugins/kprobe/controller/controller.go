@@ -7,10 +7,10 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 
-	"github.com/erda-project/ebpf-agent/metric"
-	"github.com/erda-project/ebpf-agent/pkg/criruntime"
-	"github.com/erda-project/ebpf-agent/pkg/k8sclient"
-	"github.com/erda-project/ebpf-agent/pkg/plugins/kprobe/kprobesysctl"
+	"github.com/erda-project/erda-agent/metric"
+	"github.com/erda-project/erda-agent/pkg/criruntime"
+	"github.com/erda-project/erda-agent/pkg/k8sclient"
+	"github.com/erda-project/erda-agent/pkg/plugins/kprobe/kprobesysctl"
 )
 
 type Controller struct {

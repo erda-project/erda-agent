@@ -1,4 +1,4 @@
-module github.com/erda-project/ebpf-agent
+module github.com/erda-project/erda-agent
 
 go 1.22
 
