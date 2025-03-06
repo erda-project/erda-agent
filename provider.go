@@ -5,8 +5,9 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/erda-project/erda-infra/base/servicehub"
 	"k8s.io/klog"
+
+	"github.com/erda-project/erda-infra/base/servicehub"
 )
 
 type provider struct{}

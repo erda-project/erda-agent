@@ -7,7 +7,7 @@ GOPROXY ?= https://goproxy.cn,direct
 PROJ_PATH := $(shell dirname $(abspath $(lastword $(MAKEFILE_LIST))))
 REGISTRY ?= registry.erda.cloud/erda
 KERNEL_VERSION ?= 5.15.0-87-generic
-EBPF_DEVEL_VERSION ?= v0.3
+EBPF_DEVEL_VERSION ?= v0.4
 IMAGE_TAG = $(shell date '+%Y%m%d%H%M%S')
 DOCKER_IMAGE="$(REGISTRY)/ebpf-agent:1.0-$(IMAGE_TAG)"
 
