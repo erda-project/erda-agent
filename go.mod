@@ -51,7 +51,7 @@ require (
 	github.com/pelletier/go-toml v1.9.4 // indirect
 	github.com/recallsong/go-utils v1.1.2-0.20210826100715-fce05eefa294 // indirect
 	github.com/recallsong/unmarshal v1.0.0 // indirect
-	github.com/sirupsen/logrus v1.9.0 // indirect
+	github.com/sirupsen/logrus v1.9.1 // indirect
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/vishvananda/netns v0.0.5 // indirect
 	golang.org/x/mod v0.17.0 // indirect
